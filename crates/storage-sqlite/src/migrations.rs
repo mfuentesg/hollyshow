@@ -132,7 +132,11 @@ CREATE VIRTUAL TABLE bible_fts USING fts5(
 ";
 
 /// Appended in order. Index `i` brings the schema to version `i + 1`.
-const MIGRATIONS: &[&str] = &[V1];
+const MIGRATIONS: &[&str] = &[V1, V2];
+
+/// Paired devices live in the server's `DeviceStore` (settings key `server.devices.v1`); the
+/// unused table of V1 was a second, competing schema for the same data.
+const V2: &str = "DROP TABLE IF EXISTS devices;";
 
 /// Latest schema version this build understands.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -174,12 +178,20 @@ mod tests {
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN
                  ('songs','song_sections','song_arrangements','themes','playlists','settings',
-                  'usage_log','devices','bibles','bible_verses')",
+                  'usage_log','bibles','bible_verses')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 10);
+        assert_eq!(tables, 9);
+        let devices: i64 = c
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'devices'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(devices, 0);
     }
 
     #[test]

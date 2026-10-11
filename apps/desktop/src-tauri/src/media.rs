@@ -6,7 +6,7 @@
 //! on Windows) and this module answers from the local library, so a projector never needs the
 //! network during a service.
 
-use crate::state::AppState;
+use crate::state::{blocking, AppState};
 use hollyshow_core::WireError;
 use hollyshow_media::{Category, LibraryItem, MediaResult, SearchRequest, SearchResponse};
 use tauri::http::{header, Request, Response, StatusCode};
@@ -45,9 +45,13 @@ pub async fn media_download(
         .download(result, allow_noncommercial.unwrap_or(false))
         .await
         .map_err(|e| err("media", e))?;
-    state
-        .app
-        .library_changed(hollyshow_core::LibraryScope::Media);
+    let inner = state.inner().clone();
+    blocking(move || {
+        inner
+            .app
+            .library_changed(hollyshow_core::LibraryScope::Media);
+    })
+    .await?;
     Ok(item)
 }
 

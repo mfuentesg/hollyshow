@@ -49,6 +49,15 @@ export function createTauriHost(): HostApi {
       call<Awaited<ReturnType<HostApi["setRemoteEnabled"]>>>("setRemoteEnabled")({ enabled }),
     listDevices: () => call<Awaited<ReturnType<HostApi["listDevices"]>>>("listDevices")(),
     kickDevice: (id) => call<void>("kickDevice")({ id }),
+    usageReport: (fromMs, toMs) =>
+      call<Awaited<ReturnType<HostApi["usageReport"]>>>("usageReport")({ fromMs, toMs }),
+    exportLibrary: (opts) =>
+      call<string>("exportLibrary")({
+        includeBibles: opts.includeBibles,
+        includeUsage: opts.includeUsage,
+      }),
+    importLibrary: (json, replace) =>
+      call<Awaited<ReturnType<HostApi["importLibrary"]>>>("importLibrary")({ json, replace }),
     health: () => call<Awaited<ReturnType<HostApi["health"]>>>("health")(),
     startupInfo: () => call<Awaited<ReturnType<HostApi["startupInfo"]>>>("startupInfo")(),
   };

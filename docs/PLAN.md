@@ -396,7 +396,7 @@ themes(id, name, json)                               -- fondo, fuentes, márgene
 media(id, path, kind, hash, duration, thumbnail)
 playlists(id, name, date, items[json])               -- culto: referencias a canción/pasaje/media
 usage_log(id, song_id, shown_at)                     -- reportes CCLI
-devices(id, name, role, token_hash, last_seen)        -- remotos emparejados
+(los remotos emparejados viven en settings["server.devices.v1"], ver crates/server)
 settings(key, value)
 ```
 

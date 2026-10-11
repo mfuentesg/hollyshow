@@ -1,6 +1,6 @@
 //! Whole-library export and import as one JSON document (`hollyshow-library`, version 1).
 //!
-//! Contains songs, themes, services, settings (the volatile `session.*` keys are left out) and,
+//! Contains songs, themes, services, settings (machine-owned keys such as `session.*` and `server.*` are left out) and,
 //! optionally, installed Bibles and the usage log. Import runs in a single transaction: either all
 //! of it lands or none.
 
@@ -61,7 +61,7 @@ pub struct LibraryOptions {
 pub enum ImportMode {
     /// Upsert by id; a song already present with a newer `updated_at` is kept.
     Merge,
-    /// Delete songs, themes, services and settings first. Bibles and devices are never wiped.
+    /// Delete songs, themes, services and settings first. Bibles are never wiped.
     Replace,
 }
 
@@ -78,13 +78,19 @@ pub struct ImportReport {
     pub usage: u32,
 }
 
+/// Settings owned by this machine: the running session, paired devices and the server secrets
+/// (`server.*`), window placement and the image-bank token. They are neither exported (a shared
+/// library file must not carry device tokens) nor imported nor wiped by a replace.
 fn is_volatile(key: &str) -> bool {
     key.starts_with("session.")
+        || key.starts_with("server.")
+        || key.starts_with("windows.")
+        || key == "media.openverseToken"
 }
 
 impl Store {
     pub fn export_library(&self, opts: LibraryOptions) -> StorageResult<Library> {
-        let conn = self.lock();
+        let conn = self.read();
         let mut songs_out = Vec::new();
         for id in songs::all_song_ids(&conn)? {
             if let Some(s) = songs::load_song(&conn, &id)? {
@@ -163,8 +169,15 @@ impl Store {
                 tx.execute(&format!("DELETE FROM {table}"), [])
                     .map_err(map_err)?;
             }
-            tx.execute("DELETE FROM settings WHERE key NOT LIKE 'session.%'", [])
-                .map_err(map_err)?;
+            let keys: Vec<String> = {
+                let mut st = tx.prepare("SELECT key FROM settings").map_err(map_err)?;
+                let rows = st.query_map([], |r| r.get(0)).map_err(map_err)?;
+                rows.collect::<Result<_, _>>().map_err(map_err)?
+            };
+            for key in keys.iter().filter(|k| !is_volatile(k)) {
+                tx.execute("DELETE FROM settings WHERE key = ?1", [key])
+                    .map_err(map_err)?;
+            }
         }
         for song in &lib.songs {
             let existing: Option<i64> = tx

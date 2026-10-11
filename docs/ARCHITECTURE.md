@@ -143,7 +143,15 @@ El estado Rust es la fuente de verdad **del show expandido**, pero la fuente del
   la tumba a ella sola); `install_panic_hook` registra cada pánico. Un móvil que envíe un frame malformado jamás debe
   dejar la pantalla en negro.
 - El hilo principal de Tauri solo gestiona UI/ventanas; nada pesado ahí.
-- El servidor axum corre en el runtime de Tauri (`tauri::async_runtime`); un único `Arc<AppService>` compartido.
+- El servidor axum corre en **su propio runtime tokio** (2 hilos, `Remote` en `apps/desktop/src-tauri/src/remote.rs`), no en
+  `tauri::async_runtime`: el trabajo bloqueante de los comandos IPC (SQLite, copias, instalar Biblias) nunca retrasa accepts,
+  latidos ni acks de los móviles. Un único `Arc<AppService>` compartido. Las `async fn` del shell no llaman a los
+  repositorios ni a `library_changed` en línea: usan `state::blocking`, que va a `spawn_blocking` con un semáforo (4 a la vez).
+- **ACL de Tauri**: `build.rs` declara todos los comandos (`AppManifest`), de modo que cada uno tiene un permiso `allow-<nombre>`.
+  `capabilities/default.json` (ventana `main`) los concede todos; `capabilities/render-only.json` (`output-*`, `stage`) solo
+  `get_snapshot`, `query` y `report_output_stats`. Un test comprueba que el manifiesto coincide con `generate_handler!`.
+- Registro de uso (informe CCLI): al pasar una canción a vivo, `AppService` la encola (una vez por servicio) en un hilo
+  (`usage.rs`) que escribe en `usage_log`. Los dispositivos emparejados viven solo en `settings['server.devices.v1']`.
 
 ## 5. Manejo de errores
 

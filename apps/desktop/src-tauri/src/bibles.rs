@@ -1,7 +1,7 @@
 //! Bible versions: first-run installation of the bundled public-domain texts, the catalog the
 //! settings screen lists, and user imports.
 
-use crate::state::AppState;
+use crate::state::{blocking, AppState};
 use base64::Engine as _;
 use hollyshow_bible::import::{importer_for, HsbImporter};
 use hollyshow_bible::{import_auto, install_bundled, BibleImporter, BibleSink, ImportMeta};
@@ -312,10 +312,12 @@ pub async fn install_bible(
 ) -> Result<BibleVersion, WireError> {
     state.ensure_unlocked()?;
     let inner = state.inner().clone();
-    let v = tauri::async_runtime::spawn_blocking(move || install_one(&inner, &code))
-        .await
-        .map_err(|e| err("internal", e))??;
-    changed(&state);
+    let v = blocking(move || {
+        let v = install_one(&inner, &code)?;
+        changed(&inner);
+        Ok::<_, WireError>(v)
+    })
+    .await??;
     Ok(v)
 }
 
@@ -326,10 +328,12 @@ pub async fn import_bible(
 ) -> Result<BibleVersion, WireError> {
     state.ensure_unlocked()?;
     let inner = state.inner().clone();
-    let v = tauri::async_runtime::spawn_blocking(move || import(&inner, req))
-        .await
-        .map_err(|e| err("internal", e))??;
-    changed(&state);
+    let v = blocking(move || {
+        let v = import(&inner, req)?;
+        changed(&inner);
+        Ok::<_, WireError>(v)
+    })
+    .await??;
     Ok(v)
 }
 

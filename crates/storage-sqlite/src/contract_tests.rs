@@ -291,37 +291,6 @@ fn playlists_list_newest_first_with_undated_last() {
     assert_eq!(ids, ["c", "a", "b"]);
 }
 
-#[test]
-fn devices_lifecycle() {
-    let s = Store::open_in_memory().unwrap();
-    let d = DeviceRecord {
-        id: hollyshow_core::DeviceId::new("d1"),
-        name: "iPhone de Ana".into(),
-        role: "operator".into(),
-        token_hash: "abc".into(),
-        created_at: 1,
-        last_seen: None,
-    };
-    s.save_device(&d).unwrap();
-    assert_eq!(s.find_device_by_token_hash("abc").unwrap().unwrap(), d);
-    assert!(s.find_device_by_token_hash("zzz").unwrap().is_none());
-    s.touch_device(&d.id, 99).unwrap();
-    assert_eq!(s.list_devices().unwrap()[0].last_seen, Some(99));
-    assert!(s
-        .touch_device(&hollyshow_core::DeviceId::new("x"), 1)
-        .is_err());
-    // Two devices cannot share a token.
-    let mut dup = d.clone();
-    dup.id = hollyshow_core::DeviceId::new("d2");
-    assert!(matches!(
-        s.save_device(&dup),
-        Err(StorageError::Conflict(_))
-    ));
-    s.remove_device(&d.id).unwrap();
-    s.remove_device(&d.id).unwrap();
-    assert!(s.list_devices().unwrap().is_empty());
-}
-
 fn john_store() -> Store {
     let s = Store::open_in_memory().unwrap();
     let verses = vec![
@@ -490,6 +459,7 @@ fn populated() -> Store {
     PlaylistRepo::save(&s, &playlist("p1", Some("2026-10-11"), false)).unwrap();
     SettingsRepo::set(&s, "ui.lang", "es").unwrap();
     SettingsRepo::set(&s, "session.v1", "{\"volatile\":true}").unwrap();
+    SettingsRepo::set(&s, "server.devices.v1", "secret-tokens").unwrap();
     SongRepo::log_usage(&s, &SongId::new("full"), 5).unwrap();
     s
 }
@@ -512,6 +482,10 @@ fn library_export_import_round_trip() {
     assert!(
         !json.contains("volatile"),
         "session settings are not exported"
+    );
+    assert!(
+        !json.contains("secret-tokens"),
+        "paired device data is not exported"
     );
 
     let dst = Store::open_in_memory().unwrap();

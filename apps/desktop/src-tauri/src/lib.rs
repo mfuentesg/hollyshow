@@ -105,6 +105,9 @@ pub fn run() {
             host::health,
             host::report_output_stats,
             host::startup_info,
+            host::usage_report,
+            host::export_library,
+            host::import_library,
             bibles::list_bible_catalog,
             bibles::install_bible,
             bibles::import_bible,
@@ -243,5 +246,80 @@ mod tests {
             Some("wayland")
         ));
         assert!(!should_force_x11(Some(""), Some(":0"), None));
+    }
+
+    fn quoted_names(block: &str) -> Vec<String> {
+        block
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix('"')?.strip_suffix("\","))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// `build.rs` declares the commands for the ACL; the handler registers them. They must agree
+    /// or a command is either unreachable or silently outside the permission system.
+    #[test]
+    fn manifest_matches_handler() {
+        let lib = include_str!("lib.rs");
+        let start =
+            lib.find("generate_handler![").expect("handler list") + "generate_handler![".len();
+        let end = start + lib[start..].find(']').expect("end of handler list");
+        let mut handler: Vec<String> = lib[start..end]
+            .split(',')
+            .filter_map(|p| p.trim().rsplit("::").next())
+            .filter(|n| !n.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let build = include_str!("../build.rs");
+        let b = build.find("const COMMANDS").expect("manifest list");
+        let b_end = b + build[b..].find("];").expect("end of manifest list");
+        let mut manifest = quoted_names(&build[b..b_end]);
+        handler.sort();
+        manifest.sort();
+        assert_eq!(handler, manifest);
+    }
+
+    fn capability(json: &str) -> (Vec<String>, Vec<String>) {
+        let v: serde_json::Value = serde_json::from_str(json).expect("valid capability");
+        let list = |k: &str| {
+            v[k].as_array()
+                .expect(k)
+                .iter()
+                .map(|x| x.as_str().expect("string").to_owned())
+                .collect::<Vec<_>>()
+        };
+        (list("windows"), list("permissions"))
+    }
+
+    /// Output and stage windows only render: no app command that writes may be granted to them,
+    /// and the operator window is the only one that gets the rest.
+    #[test]
+    fn render_windows_only_get_read_only_commands() {
+        let (windows, perms) = capability(include_str!("../capabilities/render-only.json"));
+        assert!(windows.iter().any(|w| w == "output-*") && windows.iter().any(|w| w == "stage"));
+        let app: Vec<&String> = perms.iter().filter(|p| p.starts_with("allow-")).collect();
+        let mut app: Vec<&str> = app.iter().map(|s| s.as_str()).collect();
+        app.sort_unstable();
+        assert_eq!(
+            app,
+            [
+                "allow-get-snapshot",
+                "allow-query",
+                "allow-report-output-stats"
+            ]
+        );
+
+        let (main_windows, main_perms) = capability(include_str!("../capabilities/default.json"));
+        assert_eq!(main_windows, ["main"]);
+        for p in [
+            "allow-dispatch",
+            "allow-set-setting",
+            "allow-kick-device",
+            "allow-import-library",
+        ] {
+            assert!(main_perms.iter().any(|x| x == p), "{p}");
+        }
+        let updater = capability(include_str!("../capabilities/updater.json"));
+        assert_eq!(updater.0, ["main"]);
     }
 }

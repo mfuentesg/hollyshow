@@ -29,6 +29,10 @@ pub struct PairingInfo {
     pub qr_url: String,
     pub pin: String,
     pub pin_expires_ms: Option<i64>,
+    /// Every address phones could try, best first (default-route adapter before virtual ones).
+    pub urls: Vec<String>,
+    /// `false` when the machine has no LAN address: the UI shows "sin red" instead of a QR.
+    pub network_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -46,6 +50,9 @@ struct CachedOffer {
     offer: PairingOffer,
     role: Role,
     expires_ms: i64,
+    /// Address the offer's URLs and QR were built for; the offer is replaced when it changes
+    /// (Wi-Fi switch, DHCP renewal) so the QR never points at a stale IP.
+    base_url: String,
 }
 
 /// Roles a PIN may grant. Congregation joins without pairing, so it is not offered.
@@ -63,7 +70,14 @@ pub fn offer_is_usable(role_wanted: Role, cached_role: Role, expires_ms: i64, no
     role_wanted == cached_role && expires_ms - now > MIN_REMAINING_MS
 }
 
+/// Worker threads of the LAN server's own runtime.
+const SERVER_WORKERS: usize = 2;
+
 pub struct Remote {
+    /// The LAN server runs on its own runtime, never on Tauri's: IPC commands do blocking SQLite
+    /// work on Tauri's workers, and a busy library (backup, Bible install) must not delay
+    /// accepts, heartbeats or acks for phones.
+    rt: Option<tokio::runtime::Runtime>,
     service: Arc<AppService>,
     settings: Arc<dyn SettingsRepo>,
     server: Mutex<Server>,
@@ -95,13 +109,24 @@ impl Remote {
             service: service.clone(),
             config: config_for(port),
         });
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(SERVER_WORKERS)
+            .thread_name("lan-server")
+            .enable_all()
+            .build()
+            .expect("the LAN server runtime starts");
         Self {
+            rt: Some(rt),
             service,
             settings,
             server: Mutex::new(server),
             running: Mutex::new(None),
             offer: Mutex::new(None),
         }
+    }
+
+    fn rt(&self) -> &tokio::runtime::Handle {
+        self.rt.as_ref().expect("runtime lives until drop").handle()
     }
 
     fn server(&self) -> Server {
@@ -128,7 +153,13 @@ impl Remote {
         if let Some(r) = lock(&self.running).as_ref() {
             return Ok(r.local_addr());
         }
-        let first = self.server().start().await;
+        // `start` spawns the accept loop on the ambient runtime: enter the server's own.
+        let server = self.server();
+        let first = self
+            .rt()
+            .spawn(async move { server.start().await })
+            .await
+            .map_err(|e| e.to_string())?;
         let running = match first {
             Ok(r) => r,
             Err(e) => {
@@ -137,7 +168,13 @@ impl Remote {
                     service: self.service.clone(),
                     config: config_for(0),
                 });
-                let r = fallback.start().await.map_err(|e| e.to_string())?;
+                let again = fallback.clone();
+                let r = self
+                    .rt()
+                    .spawn(async move { again.start().await })
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .map_err(|e| e.to_string())?;
                 *lock(&self.server) = fallback;
                 r
             }
@@ -154,7 +191,7 @@ impl Remote {
         self.server().cancel_pairing();
         *lock(&self.offer) = None;
         if let Some(r) = running {
-            r.shutdown().await;
+            let _ = self.rt().spawn(r.shutdown()).await;
         }
     }
 
@@ -172,16 +209,20 @@ impl Remote {
                 qr_url: String::new(),
                 pin: String::new(),
                 pin_expires_ms: None,
+                urls: Vec::new(),
+                network_available: false,
             });
         }
         let role = self.pairing_role();
         let now = now_ms();
         let server = self.server();
+        let urls = server.urls();
+        let base = urls.first().cloned().unwrap_or_default();
         let mut cache = lock(&self.offer);
         let reuse = !fresh
-            && cache
-                .as_ref()
-                .is_some_and(|c| offer_is_usable(role, c.role, c.expires_ms, now));
+            && cache.as_ref().is_some_and(|c| {
+                offer_is_usable(role, c.role, c.expires_ms, now) && c.base_url == base
+            });
         if !reuse {
             if fresh {
                 server.cancel_pairing();
@@ -194,13 +235,15 @@ impl Remote {
                 offer,
                 role,
                 expires_ms,
+                base_url: base.clone(),
             });
         }
         let c = cache.as_ref().expect("offer was just created");
-        let base = server.urls().into_iter().next().unwrap_or_default();
         Ok(PairingInfo {
             enabled: true,
             url: base,
+            urls,
+            network_available: server.has_network(),
             qr_url: c.offer.urls.first().cloned().unwrap_or_default(),
             pin: c.offer.pin.clone(),
             pin_expires_ms: Some(c.expires_ms),
@@ -230,6 +273,15 @@ impl Remote {
     /// Forgets a paired device and disconnects it.
     pub fn kick(&self, id: &str) -> bool {
         self.server().revoke_device(id)
+    }
+}
+
+impl Drop for Remote {
+    fn drop(&mut self) {
+        // Dropping a runtime inside an async context panics; this never blocks.
+        if let Some(rt) = self.rt.take() {
+            rt.shutdown_background();
+        }
     }
 }
 

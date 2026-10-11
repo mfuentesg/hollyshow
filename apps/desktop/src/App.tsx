@@ -4,6 +4,7 @@ import { OperatorLayout } from "./operator/OperatorLayout";
 import { ServicePage } from "./operator/ServicePage";
 import { BibleSettings } from "./operator/settings/BibleSettings";
 import { LanguageSettings } from "./operator/settings/LanguageSettings";
+import { LibrarySettings } from "./operator/settings/LibrarySettings";
 import { OutputsSettings } from "./operator/settings/OutputsSettings";
 import { RemoteSettings } from "./operator/settings/RemoteSettings";
 import { SettingsLayout } from "./operator/settings/SettingsLayout";
@@ -29,6 +30,7 @@ export function App() {
           <Route path="outputs" element={<OutputsSettings />} />
           <Route path="bible" element={<BibleSettings />} />
           <Route path="remote" element={<RemoteSettings />} />
+          <Route path="library" element={<LibrarySettings />} />
           <Route path="language" element={<LanguageSettings />} />
           <Route path="updates" element={<UpdateSettings />} />
         </Route>

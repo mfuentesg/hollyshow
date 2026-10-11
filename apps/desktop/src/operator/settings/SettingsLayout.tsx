@@ -5,6 +5,7 @@ const TABS = [
   { to: "outputs", key: "settings.outputs.title" },
   { to: "bible", key: "settings.bible.title" },
   { to: "remote", key: "settings.remote.title" },
+  { to: "library", key: "settings.library.title" },
   { to: "language", key: "settings.language.title" },
   { to: "updates", key: "settings.updates.title" },
 ] as const;

@@ -44,6 +44,10 @@ export interface PairingInfo {
   pinExpiresMs: number | null;
   /** Same address carrying the one-time token: the QR encodes this so scanning pairs by itself. */
   qrUrl?: string;
+  /** Every address phones could try, best first (the Wi-Fi adapter before virtual ones). */
+  urls?: string[];
+  /** False when the PC has no LAN address; the UI says so instead of drawing a useless QR. */
+  networkAvailable?: boolean;
 }
 
 /** Roles a PIN can grant (the congregation joins without pairing). */
@@ -116,6 +120,32 @@ export interface BibleVersionPatch {
   isSecondary?: boolean;
 }
 
+/** One row of the CCLI report: a song and how often it was shown in the period. */
+export interface UsageRow {
+  songId: string;
+  title: string | null;
+  ccli: string | null;
+  timesShown: number;
+  /** Epoch ms of the last time it went live. */
+  lastShownAt: number;
+}
+
+export interface LibraryExportOptions {
+  includeBibles: boolean;
+  includeUsage: boolean;
+}
+
+export interface LibraryImportReport {
+  songsAdded: number;
+  songsUpdated: number;
+  songsSkipped: number;
+  themes: number;
+  playlists: number;
+  settings: number;
+  bibles: number;
+  usage: number;
+}
+
 export interface HostApi {
   // Settings (key/value, persisted by the host).
   getSetting(key: string): Promise<string | null>;
@@ -158,6 +188,14 @@ export interface HostApi {
   listDevices(): Promise<RemoteDevice[]>;
   kickDevice(id: string): Promise<void>;
 
+  // CCLI report and library backup.
+  /** Songs shown in `[fromMs, toMs)`, most shown first. */
+  usageReport(fromMs: number, toMs: number): Promise<UsageRow[]>;
+  /** Writes the whole library to a JSON file and returns its path. */
+  exportLibrary(opts: LibraryExportOptions): Promise<string>;
+  /** `replace` wipes songs, themes, services and settings first; otherwise merges by id. */
+  importLibrary(json: string, replace: boolean): Promise<LibraryImportReport>;
+
   health(): Promise<HealthInfo>;
   startupInfo(): Promise<StartupInfo>;
 }
@@ -193,6 +231,9 @@ export const HOST_COMMANDS = {
   setRemoteEnabled: "set_remote_enabled",
   listDevices: "list_devices",
   kickDevice: "kick_device",
+  usageReport: "usage_report",
+  exportLibrary: "export_library",
+  importLibrary: "import_library",
   health: "health",
   startupInfo: "startup_info",
 } as const satisfies Record<keyof HostApi, string>;

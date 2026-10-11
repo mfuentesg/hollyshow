@@ -109,3 +109,23 @@ describe("settings", () => {
     expect(await screen.findByRole("heading", { name: "Language" })).toBeInTheDocument();
   });
 });
+
+describe("library settings", () => {
+  it("builds the usage report and escapes the CSV", async () => {
+    const { usageCsv } = await import("./settings/LibrarySettings");
+    const csv = usageCsv(
+      [{ songId: "a", title: 'Santo, "santo"', ccli: "123", timesShown: 2, lastShownAt: 0 }],
+      ["Canción", "CCLI", "Veces", "Última"],
+    );
+    expect(csv.split("\n")[0]).toBe("Canción,CCLI,Veces,Última");
+    expect(csv.split("\n")[1]).toMatch(/^"Santo, ""santo""",123,2,\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("lists the songs shown in the period", async () => {
+    const user = userEvent.setup();
+    renderApp("/operator/settings/library");
+    await user.click(await screen.findByRole("button", { name: "Generar informe" }));
+    const table = await screen.findByRole("table", { name: "Informe de uso" });
+    expect(table).toHaveTextContent("Santo, santo, santo");
+  });
+});

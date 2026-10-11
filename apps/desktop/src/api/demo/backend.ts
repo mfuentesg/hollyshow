@@ -27,6 +27,8 @@ import type {
   BibleImportRequest,
   HealthInfo,
   HostApi,
+  LibraryImportReport,
+  UsageRow,
   PairingInfo,
   RemoteDevice,
   SongImportFile,
@@ -86,6 +88,11 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
   const verses = new Map(Object.entries(seed.verses ?? sampleVerses()));
   const catalog: BibleCatalogEntry[] = sampleBibleCatalog();
   const settings = new Map<string, string>();
+  /** Demo usage log: every song shown twice, a week and a day ago. */
+  const usageLog = [...songs.values()].flatMap((song) => [
+    { songId: song.id, shownAt: Date.now() - 7 * 86_400_000 },
+    { songId: song.id, shownAt: Date.now() - 86_400_000 },
+  ]);
   let activeId: string | null =
     seed.activePlaylistId === undefined ? "svc-main" : seed.activePlaylistId;
   let devices: RemoteDevice[] = seed.devices ?? [
@@ -706,6 +713,47 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
     },
     async kickDevice(id) {
       devices = devices.filter((d) => d.id !== id);
+    },
+    async usageReport(fromMs, toMs): Promise<UsageRow[]> {
+      const rows = new Map<string, UsageRow>();
+      for (const u of usageLog) {
+        if (u.shownAt < fromMs || u.shownAt >= toMs) continue;
+        const song = songs.get(u.songId);
+        const row = rows.get(u.songId) ?? {
+          songId: u.songId,
+          title: song?.title ?? null,
+          ccli: song?.ccli ?? null,
+          timesShown: 0,
+          lastShownAt: 0,
+        };
+        row.timesShown += 1;
+        row.lastShownAt = Math.max(row.lastShownAt, u.shownAt);
+        rows.set(u.songId, row);
+      }
+      return [...rows.values()].sort(
+        (a, b) => b.timesShown - a.timesShown || b.lastShownAt - a.lastShownAt,
+      );
+    },
+    async exportLibrary() {
+      return "demo/exports/hollyshow-library.json";
+    },
+    async importLibrary(json, replace): Promise<LibraryImportReport> {
+      const lib = JSON.parse(json) as { format?: string; songs?: Song[] };
+      if (lib.format !== "hollyshow-library") throw { code: "invalid", message: "not a library" };
+      if (replace) songs.clear();
+      const list = lib.songs ?? [];
+      list.forEach((s) => songs.set(s.id, s));
+      touch();
+      return {
+        songsAdded: list.length,
+        songsUpdated: 0,
+        songsSkipped: 0,
+        themes: 0,
+        playlists: 0,
+        settings: 0,
+        bibles: 0,
+        usage: 0,
+      };
     },
     async health(): Promise<HealthInfo> {
       return { fps: 60, droppedFrames: 0, cpuPercent: 14, ramMb: 310 };

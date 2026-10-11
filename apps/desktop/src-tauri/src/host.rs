@@ -6,11 +6,12 @@
 //! what changed so the show is rebuilt and every client (windows and phones) refreshes.
 
 use crate::remote::{PairingInfo, RemoteDevice, ROLE_KEY};
-use crate::state::{now_ms, AppState, StartupInfo};
+use crate::state::{blocking, now_ms, AppState, StartupInfo};
 use hollyshow_core::{LibraryScope, Playlist, PlaylistId, Song, SongId, Theme, ThemeId, WireError};
 use hollyshow_songs::{
     ChordProImporter, ImportError, OpenLyricsImporter, OpenSongImporter, SongImporter, TextImporter,
 };
+use hollyshow_storage_sqlite::{ImportMode, ImportReport, LibraryOptions, UsageRow};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -234,6 +235,83 @@ pub fn delete_theme(state: State<'_, AppState>, id: ThemeId) -> Result<(), WireE
     Ok(())
 }
 
+// ---- CCLI report and library backup -----------------------------------------------------------
+
+/// Largest library file accepted by `import_library`.
+const MAX_LIBRARY_FILE: usize = 256 * 1024 * 1024;
+
+/// Songs shown in `[from_ms, to_ms)`, most shown first (the CCLI report).
+#[tauri::command]
+pub async fn usage_report(
+    state: State<'_, AppState>,
+    from_ms: i64,
+    to_ms: i64,
+) -> Result<Vec<UsageRow>, WireError> {
+    let store = state.store.clone();
+    blocking(move || store.usage_report(from_ms, to_ms))
+        .await?
+        .map_err(storage)
+}
+
+/// Writes the whole library to `<data dir>/exports/hollyshow-library-<ms>.json` and returns the
+/// path. Paired devices and other machine-owned settings are never included.
+#[tauri::command]
+pub async fn export_library(
+    state: State<'_, AppState>,
+    include_bibles: bool,
+    include_usage: bool,
+) -> Result<String, WireError> {
+    let store = state.store.clone();
+    let dir = state.paths.data_dir.join("exports");
+    blocking(move || {
+        let json = store
+            .export_library_json(LibraryOptions {
+                include_bibles,
+                include_usage,
+            })
+            .map_err(storage)?;
+        std::fs::create_dir_all(&dir).map_err(|e| err("io", e))?;
+        let path = dir.join(format!("hollyshow-library-{}.json", now_ms()));
+        std::fs::write(&path, json).map_err(|e| err("io", e))?;
+        Ok::<_, WireError>(path.to_string_lossy().into_owned())
+    })
+    .await?
+}
+
+/// Imports a library file. `replace` wipes songs, themes, services and settings first; the
+/// default merges by id and keeps the newer song.
+#[tauri::command]
+pub async fn import_library(
+    state: State<'_, AppState>,
+    json: String,
+    replace: bool,
+) -> Result<ImportReport, WireError> {
+    state.ensure_unlocked()?;
+    if json.len() > MAX_LIBRARY_FILE {
+        return Err(err("invalid", "el archivo es demasiado grande"));
+    }
+    let inner = state.inner().clone();
+    blocking(move || {
+        let mode = if replace {
+            ImportMode::Replace
+        } else {
+            ImportMode::Merge
+        };
+        let report = inner
+            .store
+            .import_library_json(&json, mode)
+            .map_err(storage)?;
+        inner.app.library_changed(LibraryScope::Themes);
+        if report.bibles > 0 {
+            inner.app.library_changed(LibraryScope::Bible);
+        }
+        // Rebuilds the open service (its songs may have changed) and tells every client.
+        inner.app.library_changed(LibraryScope::Songs);
+        Ok::<_, WireError>(report)
+    })
+    .await?
+}
+
 // ---- remote control --------------------------------------------------------------------------
 
 #[tauri::command(async)]
@@ -251,12 +329,16 @@ pub async fn set_remote_enabled(
     state: State<'_, AppState>,
     enabled: bool,
 ) -> Result<PairingInfo, WireError> {
-    state
-        .app
-        .repos()
-        .settings
-        .set(crate::remote::ENABLED_KEY, if enabled { "1" } else { "0" })
-        .map_err(storage)?;
+    let inner = state.inner().clone();
+    blocking(move || {
+        inner
+            .app
+            .repos()
+            .settings
+            .set(crate::remote::ENABLED_KEY, if enabled { "1" } else { "0" })
+    })
+    .await?
+    .map_err(storage)?;
     if enabled {
         state.remote.start().await.map_err(|e| err("remote", e))?;
     } else {
