@@ -36,6 +36,10 @@ protocol(TS) <- slide-renderer, ui(solo tokens) <- apps
 
 `core` no conoce Tauri, red, base de datos ni runtime async. `server` y `desktop` no hablan nunca con `engine` ni con los
 repositorios directamente: todo pasa por `hollyshow_app::AppService`, de modo que Tauri y WebSocket se comportan igual.
+Las escrituras de biblioteca (canciones, listas, temas, Biblias, medios) pasan por `AppService::save_*`/`delete_*` o por
+`AppService::write_library`, que (a) rechaza con `locked` en modo culto, (b) ejecuta la escritura bajo la misma compuerta que
+serializa el comando `ServiceMode` (sin carrera) y (c) llama a `library_changed`/`playlist_saved`. `SetActivePlaylist` y
+`RefreshShow` también se rechazan en modo culto. El shell no puede olvidar ninguno de los pasos.
 
 ## 2. Tabla de propiedad
 
@@ -291,7 +295,7 @@ registra con `app.manage`.
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `state.rs`    | `AppState::open`: SQLite en el directorio de datos del SO (`app_data_dir`), copia diaria (14), recuperación de una BD corrupta (copia más reciente o biblioteca vacía; la rota se conserva), contenido inicial (tema y plantilla, una sola vez), `session.running` para detectar cierres bruscos, `StartupInfo` («retomar donde estabas») |
 | `commands.rs` | `dispatch` / `query` / `get_snapshot` (los mismos casos de uso que el servidor LAN, como operador local)                                                                                                                                                                                                                                  |
-| `host.rs`     | Ajustes, escrituras de biblioteca (canciones, listas, temas; importación de canciones), remoto, salud. **Todas las escrituras se rechazan con `locked` en modo culto** y avisan a `AppService::library_changed / playlist_saved`                                                                                                          |
+| `host.rs`     | Ajustes, escrituras de biblioteca (canciones, listas, temas; importación de canciones), remoto, salud. **Todas las escrituras van por `AppService` (`write_library`), que las rechaza con `locked` en modo culto** y avisa con `library_changed / playlist_saved`                                                                                                          |
 | `bibles.rs`   | Instalación en segundo plano de las Biblias incluidas (primer arranque), catálogo, instalar/importar/quitar/ordenar versiones                                                                                                                                                                                                             |
 | `remote.rs`   | Ciclo de vida del servidor LAN (arranca al abrir; si el puerto 7420 está ocupado toma uno libre), PIN/QR con el rol configurado, dispositivos                                                                                                                                                                                             |
 | `windows.rs`  | Ventanas de salida/escenario: sin bordes, tamaño del monitor, **nunca** pantalla completa nativa; elección persistida; vigilancia de monitores (ver abajo); cierre bloqueado en modo culto                                                                                                                                                |

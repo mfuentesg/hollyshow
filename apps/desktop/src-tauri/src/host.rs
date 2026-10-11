@@ -2,8 +2,8 @@
 //! remote pairing, health and start-up information. Mirrors `HostApi` in
 //! `apps/desktop/src/api/host.ts` (command names in `HOST_COMMANDS`).
 //!
-//! Every library write (a) is refused in service mode ("modo culto") and (b) tells the app layer
-//! what changed so the show is rebuilt and every client (windows and phones) refreshes.
+//! Every library write goes through `AppService` (or `AppService::write_library`), which refuses it in
+//! service mode ("modo culto") and tells every client what changed; the shell cannot skip either.
 
 use crate::remote::{PairingInfo, RemoteDevice, ROLE_KEY};
 use crate::state::{blocking, now_ms, AppState, StartupInfo};
@@ -83,27 +83,13 @@ pub fn get_active_playlist_id(state: State<'_, AppState>) -> Option<PlaylistId> 
 // ---- songs ---------------------------------------------------------------------------------
 
 #[tauri::command(async)]
-pub fn save_song(state: State<'_, AppState>, mut song: Song) -> Result<Song, WireError> {
-    state.ensure_unlocked()?;
-    if song.title.trim().is_empty() {
-        return Err(err("invalid", "la cancion necesita un titulo"));
-    }
-    let now = now_ms();
-    if song.created_at == 0 {
-        song.created_at = now;
-    }
-    song.updated_at = now;
-    state.app.repos().songs.save(&song).map_err(storage)?;
-    state.app.library_changed(LibraryScope::Songs);
-    Ok(song)
+pub fn save_song(state: State<'_, AppState>, song: Song) -> Result<Song, WireError> {
+    state.app.save_song(song, now_ms())
 }
 
 #[tauri::command(async)]
 pub fn delete_song(state: State<'_, AppState>, id: SongId) -> Result<(), WireError> {
-    state.ensure_unlocked()?;
-    state.app.repos().songs.delete(&id).map_err(storage)?;
-    state.app.library_changed(LibraryScope::Songs);
-    Ok(())
+    state.app.delete_song(&id)
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,12 +162,11 @@ pub fn import_songs(
     state: State<'_, AppState>,
     files: Vec<SongImportFile>,
 ) -> Result<SongImportResult, WireError> {
-    state.ensure_unlocked()?;
-    let r = import_song_files(state.app.repos(), &files, now_ms());
-    if !r.imported.is_empty() {
-        state.app.library_changed(LibraryScope::Songs);
-    }
-    Ok(r)
+    state.app.write_library_if(
+        LibraryScope::Songs,
+        |r: &SongImportResult| !r.imported.is_empty(),
+        || Ok(import_song_files(state.app.repos(), &files, now_ms())),
+    )
 }
 
 // ---- playlists and themes ---------------------------------------------------------------------
@@ -191,48 +176,22 @@ pub fn save_playlist(
     state: State<'_, AppState>,
     playlist: Playlist,
 ) -> Result<Playlist, WireError> {
-    state.ensure_unlocked()?;
-    state
-        .app
-        .repos()
-        .playlists
-        .save(&playlist)
-        .map_err(storage)?;
-    state.app.playlist_saved(&playlist.id);
-    Ok(playlist)
+    state.app.save_playlist(playlist)
 }
 
 #[tauri::command(async)]
 pub fn delete_playlist(state: State<'_, AppState>, id: PlaylistId) -> Result<(), WireError> {
-    state.ensure_unlocked()?;
-    if state.app.active_playlist().as_ref() == Some(&id) {
-        return Err(err("conflict", "no se puede borrar el servicio abierto"));
-    }
-    state.app.repos().playlists.delete(&id).map_err(storage)?;
-    state.app.playlist_saved(&id);
-    Ok(())
+    state.app.delete_playlist(&id)
 }
 
 #[tauri::command(async)]
 pub fn save_theme(state: State<'_, AppState>, theme: Theme) -> Result<Theme, WireError> {
-    state.ensure_unlocked()?;
-    if theme.id.as_str().is_empty() {
-        return Err(err("invalid", "el tema necesita un id"));
-    }
-    state.app.repos().themes.save(&theme).map_err(storage)?;
-    state.app.library_changed(LibraryScope::Themes);
-    Ok(theme)
+    state.app.save_theme(theme)
 }
 
 #[tauri::command(async)]
 pub fn delete_theme(state: State<'_, AppState>, id: ThemeId) -> Result<(), WireError> {
-    state.ensure_unlocked()?;
-    if id.as_str() == "default" {
-        return Err(err("conflict", "el tema predeterminado no se puede borrar"));
-    }
-    state.app.repos().themes.delete(&id).map_err(storage)?;
-    state.app.library_changed(LibraryScope::Themes);
-    Ok(())
+    state.app.delete_theme(&id)
 }
 
 // ---- CCLI report and library backup -----------------------------------------------------------
@@ -286,7 +245,7 @@ pub async fn import_library(
     json: String,
     replace: bool,
 ) -> Result<ImportReport, WireError> {
-    state.ensure_unlocked()?;
+    state.app.ensure_unlocked()?;
     if json.len() > MAX_LIBRARY_FILE {
         return Err(err("invalid", "el archivo es demasiado grande"));
     }
@@ -297,16 +256,14 @@ pub async fn import_library(
         } else {
             ImportMode::Merge
         };
-        let report = inner
-            .store
-            .import_library_json(&json, mode)
-            .map_err(storage)?;
+        // Rebuilds the open service (its songs may have changed) and tells every client.
+        let report = inner.app.write_library(LibraryScope::Songs, || {
+            inner.store.import_library_json(&json, mode).map_err(storage)
+        })?;
         inner.app.library_changed(LibraryScope::Themes);
         if report.bibles > 0 {
             inner.app.library_changed(LibraryScope::Bible);
         }
-        // Rebuilds the open service (its songs may have changed) and tells every client.
-        inner.app.library_changed(LibraryScope::Songs);
         Ok::<_, WireError>(report)
     })
     .await?

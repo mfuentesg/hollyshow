@@ -288,10 +288,6 @@ pub fn import(state: &AppState, req: ImportRequest) -> Result<BibleVersion, Wire
 // Commands
 // ---------------------------------------------------------------------------------------------
 
-fn changed(state: &AppState) {
-    state.app.library_changed(LibraryScope::Bible);
-}
-
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VersionPatch {
@@ -310,12 +306,12 @@ pub async fn install_bible(
     state: State<'_, AppState>,
     code: VersionCode,
 ) -> Result<BibleVersion, WireError> {
-    state.ensure_unlocked()?;
+    state.app.ensure_unlocked()?;
     let inner = state.inner().clone();
     let v = blocking(move || {
-        let v = install_one(&inner, &code)?;
-        changed(&inner);
-        Ok::<_, WireError>(v)
+        inner
+            .app
+            .write_library(LibraryScope::Bible, || install_one(&inner, &code))
     })
     .await??;
     Ok(v)
@@ -326,12 +322,12 @@ pub async fn import_bible(
     state: State<'_, AppState>,
     req: ImportRequest,
 ) -> Result<BibleVersion, WireError> {
-    state.ensure_unlocked()?;
+    state.app.ensure_unlocked()?;
     let inner = state.inner().clone();
     let v = blocking(move || {
-        let v = import(&inner, req)?;
-        changed(&inner);
-        Ok::<_, WireError>(v)
+        inner
+            .app
+            .write_library(LibraryScope::Bible, || import(&inner, req))
     })
     .await??;
     Ok(v)
@@ -339,10 +335,9 @@ pub async fn import_bible(
 
 #[tauri::command(async)]
 pub fn remove_bible(state: State<'_, AppState>, code: VersionCode) -> Result<(), WireError> {
-    state.ensure_unlocked()?;
-    BibleRepo::remove_version(&*state.store, &code).map_err(|e| err("storage", e))?;
-    changed(&state);
-    Ok(())
+    state.app.write_library(LibraryScope::Bible, || {
+        BibleRepo::remove_version(&*state.store, &code).map_err(|e| err("storage", e))
+    })
 }
 
 #[tauri::command(async)]
@@ -351,30 +346,30 @@ pub fn update_bible_version(
     code: VersionCode,
     patch: VersionPatch,
 ) -> Result<Vec<BibleVersion>, WireError> {
-    state.ensure_unlocked()?;
     let repo: &dyn BibleRepo = &*state.store;
     let s = |e: hollyshow_storage_api::StorageError| err("storage", e);
-    if let Some(on) = patch.is_enabled {
-        repo.set_enabled(&code, on).map_err(s)?;
-    }
-    if patch.is_default == Some(true) {
-        repo.set_default(&code).map_err(s)?;
-    }
-    match patch.is_secondary {
-        Some(true) => repo.set_secondary(Some(&code)).map_err(s)?,
-        Some(false) => {
-            let is_current = repo
-                .get_version(&code)
-                .map_err(s)?
-                .is_some_and(|v| v.is_secondary);
-            if is_current {
-                repo.set_secondary(None).map_err(s)?;
-            }
+    state.app.write_library(LibraryScope::Bible, || {
+        if let Some(on) = patch.is_enabled {
+            repo.set_enabled(&code, on).map_err(s)?;
         }
-        None => {}
-    }
-    changed(&state);
-    repo.list_versions().map_err(s)
+        if patch.is_default == Some(true) {
+            repo.set_default(&code).map_err(s)?;
+        }
+        match patch.is_secondary {
+            Some(true) => repo.set_secondary(Some(&code)).map_err(s)?,
+            Some(false) => {
+                let is_current = repo
+                    .get_version(&code)
+                    .map_err(s)?
+                    .is_some_and(|v| v.is_secondary);
+                if is_current {
+                    repo.set_secondary(None).map_err(s)?;
+                }
+            }
+            None => {}
+        }
+        repo.list_versions().map_err(s)
+    })
 }
 
 #[tauri::command(async)]
@@ -382,11 +377,11 @@ pub fn reorder_bible_versions(
     state: State<'_, AppState>,
     codes: Vec<VersionCode>,
 ) -> Result<Vec<BibleVersion>, WireError> {
-    state.ensure_unlocked()?;
-    state
-        .store
-        .set_bible_order(&codes)
-        .map_err(|e| err("storage", e))?;
-    changed(&state);
-    BibleRepo::list_versions(&*state.store).map_err(|e| err("storage", e))
+    state.app.write_library(LibraryScope::Bible, || {
+        state
+            .store
+            .set_bible_order(&codes)
+            .map_err(|e| err("storage", e))?;
+        BibleRepo::list_versions(&*state.store).map_err(|e| err("storage", e))
+    })
 }

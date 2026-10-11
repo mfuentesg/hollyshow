@@ -6,12 +6,12 @@ use crate::session::RoleFeed;
 use crate::show::build_show;
 use crate::usage::UsageLogger;
 use crate::writer::SessionWriter;
+mod library;
 use hollyshow_bible::{build_bible_slide, VersionText};
 use hollyshow_core::{
     project, Ack, BibleVersion, Command, CommandId, CoreError, Cue, EngineCommand, Event, ItemId,
     LibraryScope, ParallelLayout, Passage, PlaylistId, QueryRequest, QueryResponse, Restore, Role,
-    Target,
-    ServerMsg, SessionId, ShowEntry, Slide, Timer, Verse, VersionCode, WireError,
+    ServerMsg, SessionId, ShowEntry, Slide, Target, Timer, Verse, VersionCode, WireError,
 };
 use hollyshow_engine::{Dispatched, Engine, Outcome};
 use hollyshow_songs::SlideSplitter;
@@ -79,6 +79,8 @@ struct HostState {
 }
 
 pub struct AppService {
+    /// Serialises library writes with the `ServiceMode` command (see `library`).
+    write_gate: Mutex<()>,
     engine: Arc<Engine>,
     repos: Repos,
     splitter: Arc<dyn SlideSplitter>,
@@ -100,6 +102,7 @@ impl AppService {
         let writer = SessionWriter::spawn(repos.settings.clone(), SESSION_KEY);
         let usage = UsageLogger::spawn(repos.clone());
         Self {
+            write_gate: Mutex::new(()),
             engine,
             repos,
             splitter,
@@ -180,10 +183,22 @@ impl AppService {
                 )),
                 Err(e) => self.ack_err(&e, false),
             },
+            // Swapping or rebuilding the show mid-service is as destructive as editing it.
+            Command::SetActivePlaylist { .. } | Command::RefreshShow if self.is_locked() => {
+                self.ack_err(&CoreError::Locked, false)
+            }
             Command::SetActivePlaylist { id: playlist } => {
                 self.ack_plain(self.set_active_playlist(&playlist))
             }
             Command::RefreshShow => self.ack_plain(self.refresh_show()),
+            Command::ServiceMode { on } => {
+                // Taking the gate means no library write is half-way when the lock engages.
+                let _gate = self.gate();
+                self.ack_from(
+                    self.engine
+                        .dispatch(session, id, Command::ServiceMode { on }.into()),
+                )
+            }
             Command::UpdateSlide {
                 item_id,
                 slide_index,
@@ -527,9 +542,9 @@ mod tests {
     use hollyshow_storage_api::memory::MemoryStore;
     use hollyshow_storage_api::{PlaylistRepo, SettingsRepo, SongRepo, StorageResult};
 
-    struct Fixture {
+    pub(super) struct Fixture {
         store: Arc<MemoryStore>,
-        app: AppService,
+        pub(super) app: AppService,
     }
 
     fn song(id: &str, lyrics: &str) -> hollyshow_core::Song {
@@ -591,7 +606,7 @@ mod tests {
         }
     }
 
-    fn fixture() -> Fixture {
+    pub(super) fn fixture() -> Fixture {
         let store = Arc::new(MemoryStore::new());
         SongRepo::save(&*store, &song("s1", "uno\ndos")).unwrap();
         PlaylistRepo::save(&*store, &playlist()).unwrap();

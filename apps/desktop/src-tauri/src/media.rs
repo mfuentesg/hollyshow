@@ -40,6 +40,7 @@ pub async fn media_download(
     result: MediaResult,
     allow_noncommercial: Option<bool>,
 ) -> Result<LibraryItem, WireError> {
+    state.app.ensure_unlocked()?;
     let item = state
         .media
         .download(result, allow_noncommercial.unwrap_or(false))
@@ -62,14 +63,11 @@ pub fn media_list(state: State<'_, AppState>) -> Result<Vec<LibraryItem>, WireEr
 
 #[tauri::command(async)]
 pub fn media_remove(state: State<'_, AppState>, id: String) -> Result<bool, WireError> {
-    state.ensure_unlocked()?;
-    let removed = state.media.remove(&id).map_err(|e| err("media", e))?;
-    if removed {
-        state
-            .app
-            .library_changed(hollyshow_core::LibraryScope::Media);
-    }
-    Ok(removed)
+    state.app.write_library_if(
+        hollyshow_core::LibraryScope::Media,
+        |removed| *removed,
+        || state.media.remove(&id).map_err(|e| err("media", e)),
+    )
 }
 
 #[tauri::command(async)]

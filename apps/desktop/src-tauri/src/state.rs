@@ -195,13 +195,6 @@ fn starter_template() -> Playlist {
     }
 }
 
-pub fn locked_error() -> WireError {
-    WireError {
-        code: "locked".into(),
-        message: "modo culto activo: las ediciones estan bloqueadas".into(),
-    }
-}
-
 #[derive(Clone)]
 pub struct AppState {
     pub app: Arc<AppService>,
@@ -285,16 +278,7 @@ impl AppState {
 
     /// Whether library edits are blocked ("modo culto").
     pub fn is_locked(&self) -> bool {
-        self.app.engine().view().service_mode
-    }
-
-    /// Fails with a `locked` error while service mode is on.
-    pub fn ensure_unlocked(&self) -> Result<(), WireError> {
-        if self.is_locked() {
-            Err(locked_error())
-        } else {
-            Ok(())
-        }
+        self.app.is_locked()
     }
 
     /// Marks a clean exit and writes the session one last time.
@@ -459,13 +443,13 @@ mod tests {
     fn service_mode_locks_library_edits() {
         let dir = tempfile::tempdir().unwrap();
         let st = AppState::open(paths(dir.path())).unwrap();
-        assert!(st.ensure_unlocked().is_ok());
+        assert!(st.app.ensure_unlocked().is_ok());
         let ack = st.app.dispatch(
             &hollyshow_app::ClientCtx::local_operator(),
             None,
             hollyshow_core::Command::ServiceMode { on: true },
         );
         assert!(ack.ok);
-        assert_eq!(st.ensure_unlocked().unwrap_err().code, "locked");
+        assert_eq!(st.app.ensure_unlocked().unwrap_err().code, "locked");
     }
 }
