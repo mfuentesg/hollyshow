@@ -55,13 +55,14 @@ struct CachedOffer {
     base_url: String,
 }
 
-/// Roles a PIN may grant. Congregation joins without pairing, so it is not offered.
+/// Roles a PIN may grant. Congregation joins without pairing, so it is not offered. Full control
+/// (`operator`) must be chosen explicitly; a missing or unknown value gets the least privilege.
 pub fn parse_pairing_role(s: Option<&str>) -> Role {
     match s {
+        Some("operator") => Role::Operator,
         Some("pastor") => Role::Pastor,
         Some("musician") => Role::Musician,
-        Some("stage") => Role::Stage,
-        _ => Role::Operator,
+        _ => Role::Stage,
     }
 }
 
@@ -133,13 +134,14 @@ impl Remote {
         lock(&self.server).clone()
     }
 
-    /// Whether the user wants the remote on (default yes).
+    /// Whether the user wants the remote on. Off until they opt in: a fresh install must not
+    /// listen on the shared network.
     pub fn wanted(&self) -> bool {
         self.settings
             .get(ENABLED_KEY)
             .ok()
             .flatten()
-            .is_none_or(|v| v != "0")
+            .is_some_and(|v| v == "1")
     }
 
     pub fn is_running(&self) -> bool {
@@ -294,12 +296,13 @@ mod tests {
 
     #[test]
     fn pairing_role_setting_never_grants_congregation_or_unknown_roles() {
-        assert_eq!(parse_pairing_role(None), Role::Operator);
+        assert_eq!(parse_pairing_role(None), Role::Stage);
+        assert_eq!(parse_pairing_role(Some("operator")), Role::Operator);
         assert_eq!(parse_pairing_role(Some("pastor")), Role::Pastor);
         assert_eq!(parse_pairing_role(Some("musician")), Role::Musician);
         assert_eq!(parse_pairing_role(Some("stage")), Role::Stage);
-        assert_eq!(parse_pairing_role(Some("root")), Role::Operator);
-        assert_eq!(parse_pairing_role(Some("congregation")), Role::Operator);
+        assert_eq!(parse_pairing_role(Some("root")), Role::Stage);
+        assert_eq!(parse_pairing_role(Some("congregation")), Role::Stage);
     }
 
     #[test]
@@ -319,6 +322,16 @@ mod tests {
         // Port 0 and no mDNS interference in tests: the setting below picks a free port.
         repos.settings.set(PORT_KEY, "65000").unwrap();
         Remote::new(svc, repos.settings)
+    }
+
+    #[test]
+    fn the_remote_is_off_until_the_user_opts_in() {
+        let r = remote();
+        assert!(!r.wanted());
+        r.settings.set(ENABLED_KEY, "1").unwrap();
+        assert!(r.wanted());
+        r.settings.set(ENABLED_KEY, "0").unwrap();
+        assert!(!r.wanted());
     }
 
     #[tokio::test]

@@ -487,7 +487,8 @@
         "musician": "Musician"
       },
       "pairingRole": "Role granted by the PIN",
-      "pairingRoleHint": "Whoever pairs with this PIN or QR gets this role."
+      "pairingRoleHint": "Whoever pairs with this PIN or QR gets this role.",
+      "operatorWarning": "Warning: anyone who sees this PIN or QR for 10 minutes gets full control of the projector. Use Operator only on a trusted network and switch to another role once paired."
     },
     "language": {
       "title": "Language",

@@ -23,7 +23,7 @@ export function RemoteSettings() {
   const toasts = useToasts();
   const now = useNow(1000);
   const [busy, setBusy] = useState(false);
-  const [role, setRole] = useState<PairingRole>("operator");
+  const [role, setRole] = useState<PairingRole>("stage");
   const { pairing, devices } = op;
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export function RemoteSettings() {
                 void guard(() => host.setPairingRole(next));
               }}
             >
-              {(["operator", "pastor", "musician", "stage"] as const).map((r) => (
+              {(["stage", "musician", "pastor", "operator"] as const).map((r) => (
                 <option key={r} value={r}>
                   {t(`settings.remote.roles.${r}`)}
                 </option>
@@ -82,6 +82,12 @@ export function RemoteSettings() {
             </Select>
           )}
         </Field>
+      )}
+
+      {pairing?.enabled && role === "operator" && (
+        <p className="muted" role="alert">
+          {t("settings.remote.operatorWarning")}
+        </p>
       )}
 
       {pairing?.enabled && (
