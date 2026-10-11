@@ -30,10 +30,17 @@ describe("serverOrigin", () => {
       "wss://x.local/ws",
     );
   });
+  it("ignores the host override in production builds", () => {
+    const loc = { protocol: "http:", host: "192.168.1.5:7420", search: "?host=evil.example:80" };
+    expect(serverOrigin(loc, false).http).toBe("http://192.168.1.5:7420");
+    expect(serverOrigin(loc, false).ws).toBe("ws://192.168.1.5:7420/ws");
+  });
   it("allows a dev override but not arbitrary strings", () => {
     expect(
-      serverOrigin({ protocol: "http:", host: "localhost:5174", search: "?host=192.168.1.5:7420" })
-        .ws,
+      serverOrigin(
+        { protocol: "http:", host: "localhost:5174", search: "?host=192.168.1.5:7420" },
+        true,
+      ).ws,
     ).toBe("ws://192.168.1.5:7420/ws");
     expect(serverOrigin({ protocol: "http:", host: "a", search: "?host=evil.com/x?" }).http).toBe(
       "http://a",

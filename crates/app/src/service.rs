@@ -10,6 +10,7 @@ use hollyshow_bible::{build_bible_slide, VersionText};
 use hollyshow_core::{
     project, Ack, BibleVersion, Command, CommandId, CoreError, Cue, EngineCommand, Event, ItemId,
     LibraryScope, ParallelLayout, Passage, PlaylistId, QueryRequest, QueryResponse, Restore, Role,
+    Target,
     ServerMsg, SessionId, ShowEntry, Slide, Timer, Verse, VersionCode, WireError,
 };
 use hollyshow_engine::{Dispatched, Engine, Outcome};
@@ -167,7 +168,12 @@ impl AppService {
                     session,
                     id,
                     EngineCommand::ShowBible {
-                        target,
+                        // Only the operator may take a passage live; others just stage it.
+                        target: if ctx.role == Role::Operator {
+                            target
+                        } else {
+                            Target::Preview
+                        },
                         layout,
                         slide,
                     },
@@ -720,9 +726,10 @@ mod tests {
             let ack = f.app.dispatch(&pastor, None, cmd);
             assert_eq!(ack.error.unwrap().code, "forbidden");
         }
-        // What is live is exactly the library text.
-        let live = f.app.engine().snapshot().live.unwrap();
-        assert_eq!(live.slide.kind, SlideKind::Bible);
+        // A pastor request is only staged: the projector is untouched until the operator acts.
+        let st = f.app.engine().snapshot();
+        assert!(st.live.is_none());
+        assert_eq!(st.preview.unwrap().slide.kind, SlideKind::Bible);
     }
 
     #[test]

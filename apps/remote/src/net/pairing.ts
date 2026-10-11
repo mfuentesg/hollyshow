@@ -19,11 +19,16 @@ export class PairError extends Error {
 }
 
 /** Where the page was opened: origin of the LAN server (also `vite dev` with `?host=`). */
-export function serverOrigin(loc: Pick<Location, "protocol" | "host" | "search"> = location): {
+export function serverOrigin(
+  loc: Pick<Location, "protocol" | "host" | "search"> = location,
+  allowOverride: boolean = import.meta.env.DEV,
+): {
   http: string;
   ws: string;
 } {
-  const override = new URLSearchParams(loc.search).get("host");
+  // `?host=` is a dev-only convenience: in production it would let a crafted link send the stored
+  // token or a typed PIN to an arbitrary server.
+  const override = allowOverride ? new URLSearchParams(loc.search).get("host") : null;
   const host = override && /^[\w.\-:[\]]+$/.test(override) ? override : loc.host;
   const secure = loc.protocol === "https:";
   return {
