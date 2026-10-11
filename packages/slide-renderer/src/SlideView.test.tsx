@@ -111,4 +111,16 @@ describe("SlideView", () => {
     expect(html).toContain("-webkit-text-stroke");
     expect(html).toContain("text-shadow");
   });
+
+  it("parallel Bible: long credit is one ellipsized line and labels use longhand font styles", () => {
+    const slide = bible("columns");
+    slide.bible[0]!.copyright = "Reina-Valera 1909 (dominio público) ".repeat(4);
+    const html = renderToString(
+      <SlideView slide={slide} theme={{ ...defaultTheme, showCopyright: true }} />,
+    );
+    expect(html).toContain("text-overflow:ellipsis");
+    expect(html).toContain("white-space:nowrap");
+    expect(html).not.toMatch(/style="[^"]*[; ]font:/);
+    expect(html).toContain("RVR1909");
+  });
 });

@@ -25,6 +25,8 @@ export interface FitInput {
   gapEm?: number;
   /** Fixed extra height (headers, labels, footer) in em of the base font (default 0). */
   extraEm?: number;
+  /** Fixed extra height in CSS px that does not scale with the font (min-size labels). */
+  extraPx?: number;
 }
 
 /**
@@ -83,8 +85,8 @@ export function wrappedLineCount(
 
 /** Height in px the lines need at base size `px`. */
 export function textHeight(input: FitInput, px: number): number {
-  const { lines, width, lineHeight, measure, scales, gapEm = 0, extraEm = 0 } = input;
-  let h = extraEm * px;
+  const { lines, width, lineHeight, measure, scales, gapEm = 0, extraEm = 0, extraPx = 0 } = input;
+  let h = extraEm * px + extraPx;
   lines.forEach((line, i) => {
     const s = scales?.[i] ?? 1;
     const size = px * s;

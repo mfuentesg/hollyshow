@@ -17,6 +17,13 @@ export const SCALE = {
   footer: 0.3,
 } as const;
 
+/** Version labels never drop below ~14px at 1080p equivalent. */
+export const MIN_VERSION_LABEL_PX = 14;
+
+export function versionLabelPx(px: number, boxH: number): number {
+  return Math.max(px * SCALE.versionLabel, (MIN_VERSION_LABEL_PX * boxH) / REFERENCE_HEIGHT);
+}
+
 export type TextMode =
   "lyrics" | "bible-single" | "bible-columns" | "bible-stacked" | "bible-subtitle" | "plain";
 
@@ -75,6 +82,7 @@ function fitInput(
     lineHeight: theme.font.lineHeight,
     measure,
   };
+  const labelPx = 1.2 * ((MIN_VERSION_LABEL_PX * box.h) / REFERENCE_HEIGHT);
   switch (mode) {
     case "bible-columns": {
       const n = slide.bible.length;
@@ -85,10 +93,8 @@ function fitInput(
         lines: [c.text],
         width,
         height: area.h,
-        extraEm:
-          SCALE.bibleHeader * theme.font.lineHeight +
-          SCALE.versionLabel * theme.font.lineHeight +
-          0.6,
+        extraEm: SCALE.bibleHeader * theme.font.lineHeight + 0.6 + 0.3,
+        extraPx: theme.showBibleVersionLabel ? labelPx : 0,
       }));
     }
     case "bible-stacked": {
@@ -129,10 +135,8 @@ function fitInput(
           lines: slide.bible.map((c) => c.text),
           width: area.w,
           height: area.h,
-          extraEm:
-            SCALE.bibleHeader * theme.font.lineHeight +
-            SCALE.versionLabel * theme.font.lineHeight +
-            0.6,
+          extraEm: SCALE.bibleHeader * theme.font.lineHeight + 0.6,
+          extraPx: theme.showBibleVersionLabel ? labelPx : 0,
         },
       ];
     case "lyrics":
@@ -159,7 +163,8 @@ function fitInput(
  */
 export function planText(slide: Slide, theme: Theme, box: Box, measure: Measure): TextPlan {
   const mode = modeOf(slide);
-  const area = textArea(theme, box, Boolean(slide.footer && theme.showCopyright));
+  const area = textArea(theme, box, Boolean(theme.showCopyright && (slide.footer || slide.bible.some((c) => c.copyright))),
+  );
   const inputs = fitInput(slide, theme, area, box, measure, mode);
   const px =
     inputs.length === 0 ? Math.floor(theme.font.minPx) : Math.min(...inputs.map(fitFontSize));

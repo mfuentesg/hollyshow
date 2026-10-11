@@ -1,7 +1,7 @@
 import type { BibleColumn, Slide, Theme } from "@hollyshow/protocol";
 import { forwardRef, type CSSProperties, type ReactNode } from "react";
 import { textWeight } from "./fitCache";
-import { COLUMN_GAP, SCALE, textArea, type Box, type TextMode } from "./layout";
+import { COLUMN_GAP, SCALE, textArea, versionLabelPx, type Box, type TextMode } from "./layout";
 
 export const ACCENT = "#F2B544";
 const MONO = "var(--hs-font-mono, 'JetBrains Mono', ui-monospace, monospace)";
@@ -38,15 +38,18 @@ function Line({ children, style }: { children: ReactNode; style?: CSSProperties 
   );
 }
 
-function versionLine(c: BibleColumn, theme: Theme, px: number): ReactNode {
+function versionLine(c: BibleColumn, theme: Theme, px: number, boxH: number): ReactNode {
   if (!theme.showBibleVersionLabel) return null;
   return (
     <Line
       style={{
-        font: `600 ${px * SCALE.versionLabel}px ${MONO}`,
+        fontFamily: MONO,
+        fontWeight: 600,
+        fontSize: versionLabelPx(px, boxH),
         color: ACCENT,
         textShadow: "none",
         lineHeight: 1.2,
+        whiteSpace: "nowrap",
       }}
     >
       {c.version}
@@ -163,9 +166,9 @@ export const TextFrame = forwardRef<
                       }}
                     />
                   )}
+                  {versionLine(c, theme, px, box.h)}
+                  <div style={{ height: px * 0.3 }} />
                   <Line style={{ color: i === 0 ? undefined : "#C9D6EA" }}>{c.text}</Line>
-                  <div style={{ height: px * 0.5 }} />
-                  {versionLine(c, theme, px)}
                 </div>
               ))}
             </div>
@@ -198,7 +201,9 @@ export const TextFrame = forwardRef<
                 {theme.showBibleVersionLabel && (
                   <span
                     style={{
-                      font: `600 ${px * SCALE.versionLabel}px ${MONO}`,
+                      fontFamily: MONO,
+                      fontWeight: 600,
+                      fontSize: versionLabelPx(px, box.h),
                       color: ACCENT,
                       marginLeft: px * 0.35,
                       textShadow: "none",
@@ -220,7 +225,7 @@ export const TextFrame = forwardRef<
             <BibleHeader text={header} px={px} />
             {first && <Line>{first.text}</Line>}
             <div style={{ height: px * 0.5 }} />
-            {first && versionLine(first, theme, px)}
+            {first && versionLine(first, theme, px, box.h)}
           </>
         );
     }
@@ -257,13 +262,26 @@ export const TextFrame = forwardRef<
             display: "flex",
             justifyContent: "space-between",
             gap: footerFont * 2,
-            font: `400 ${footerFont}px ${MONO}`,
+            fontFamily: MONO,
+            fontWeight: 400,
+            fontSize: footerFont,
+            lineHeight: 1.2,
             color: "rgba(255,255,255,.68)",
             textShadow: "none",
           }}
         >
-          <span>{left}</span>
-          <span style={{ whiteSpace: "nowrap" }}>{right}</span>
+          <span
+            title={left}
+            style={{
+              minWidth: 0,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {left}
+          </span>
+          <span style={{ whiteSpace: "nowrap", flex: "none" }}>{right}</span>
         </div>
       )}
     </div>
