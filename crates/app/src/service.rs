@@ -41,6 +41,11 @@ impl ClientCtx {
         Self { session, role }
     }
 
+    /// True for the in-process operator window; every other session is a LAN client.
+    pub fn is_local(&self) -> bool {
+        self.session.as_str() == "local"
+    }
+
     /// The operator window of this machine.
     pub fn local_operator() -> Self {
         Self::new(SessionId::new("local"), Role::Operator)
@@ -130,6 +135,25 @@ impl AppService {
         }
         if !ctx.role.can_dispatch(&cmd) {
             return self.ack_err(&CoreError::Forbidden, false);
+        }
+        // Relative commands are not idempotent: a remote client must say which state it saw, or a
+        // retry / double tap would skip slides.
+        if !ctx.is_local()
+            && matches!(
+                cmd,
+                Command::Next {
+                    expected_version: None
+                } | Command::Prev {
+                    expected_version: None
+                }
+            )
+        {
+            return self.ack_err(
+                &CoreError::Invalid(
+                    "relative commands from remote clients need expectedVersion".into(),
+                ),
+                false,
+            );
         }
         let session = &ctx.session;
         let ack = match cmd {
@@ -950,12 +974,40 @@ mod tests {
         let id = CommandId::new("c-1");
         let a = ClientCtx::new(SessionId::new("A"), Role::Operator);
         let b = ClientCtx::new(SessionId::new("B"), Role::Operator);
+        let v = f.app.engine().view().version;
         let next = || Command::Next {
-            expected_version: None,
+            expected_version: Some(v),
         };
         let first = f.app.dispatch(&a, Some(&id), next());
         let retry = f.app.dispatch(&a, Some(&id), next());
         let other = f.app.dispatch(&b, Some(&id), next());
         assert!(!first.duplicate && retry.duplicate && !other.duplicate);
+    }
+
+    #[test]
+    fn remote_relative_commands_must_carry_expected_version() {
+        let f = fixture();
+        f.app.set_active_playlist(&"p1".into()).unwrap();
+        let remote = ClientCtx::new(SessionId::new("phone"), Role::Operator);
+        for cmd in [
+            Command::Next {
+                expected_version: None,
+            },
+            Command::Prev {
+                expected_version: None,
+            },
+        ] {
+            let ack = f.app.dispatch(&remote, None, cmd.clone());
+            assert!(!ack.ok);
+            assert_eq!(ack.error.unwrap().code, "invalid");
+        }
+        let ack = f.app.dispatch(
+            &ClientCtx::local_operator(),
+            None,
+            Command::Next {
+                expected_version: None,
+            },
+        );
+        assert_ne!(ack.error.map(|e| e.code), Some("invalid".to_string()));
     }
 }
