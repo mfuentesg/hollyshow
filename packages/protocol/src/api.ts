@@ -20,6 +20,7 @@ export interface QueryResponseKinds {
   getPassage: "passage";
   searchBible: "bibleHits";
   listThemes: "themes";
+  unknown: "unknown";
 }
 
 export type QueryResult<Q extends QueryRequest> = Extract<

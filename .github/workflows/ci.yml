@@ -4,6 +4,8 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  # Reused by release.yml as its quality gate: releases run exactly these steps.
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,6 +18,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -35,12 +38,18 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ci
 
       - run: pnpm install --frozen-lockfile
 
-      # The Tauri crate embeds the built frontend at compile time.
+      - name: Version files are consistent
+        run: node scripts/check-version.mjs ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+
+      # The Tauri and server crates embed the built frontends at compile time (they fall back to a
+      # placeholder on a fresh clone, but CI tests the real thing).
       - name: Build frontends
-        run: pnpm -r --filter './apps/*' build
+        run: pnpm build:web
 
       - name: rustfmt
         run: cargo fmt --all -- --check
@@ -49,10 +58,16 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
+      # `git diff` ignores untracked files, so a new type nobody committed would pass. Porcelain
+      # status reports modified, deleted AND untracked files under the generated directory.
       - name: Generated TS types are up to date
         run: |
           pnpm gen:types
-          git diff --exit-code -- packages/protocol/src/generated
+          if [ -n "$(git status --porcelain -- packages/protocol/src/generated)" ]; then
+            git status --short -- packages/protocol/src/generated
+            echo "::error::Generated types are stale. Run 'pnpm gen:types' and commit the result."
+            exit 1
+          fi
 
       - run: pnpm lint
       - run: pnpm typecheck

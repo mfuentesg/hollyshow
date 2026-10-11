@@ -4,4 +4,4 @@ import type { PlaylistId } from "./PlaylistId";
 import type { SongId } from "./SongId";
 import type { VersionCode } from "./VersionCode";
 
-export type QueryRequest = { "kind": "searchSongs", text: string, limit: number, } | { "kind": "getSong", id: SongId, } | { "kind": "listPlaylists" } | { "kind": "getPlaylist", id: PlaylistId, } | { "kind": "listBibleVersions" } | { "kind": "getPassage", version: VersionCode, passage: Passage, } | { "kind": "searchBible", text: string, version: VersionCode | null, limit: number, } | { "kind": "listThemes" };
+export type QueryRequest = { "kind": "searchSongs", text: string, limit: number, } | { "kind": "getSong", id: SongId, } | { "kind": "listPlaylists" } | { "kind": "getPlaylist", id: PlaylistId, } | { "kind": "listBibleVersions" } | { "kind": "getPassage", version: VersionCode, passage: Passage, } | { "kind": "searchBible", text: string, version: VersionCode | null, limit: number, } | { "kind": "listThemes" } | { "kind": "unknown" };

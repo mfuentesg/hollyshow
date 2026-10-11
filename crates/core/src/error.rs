@@ -24,6 +24,10 @@ pub enum CoreError {
     BibleNotResolved,
     #[error("unknown timer {0}")]
     UnknownTimer(String),
+    #[error("unsupported command: {0}")]
+    Unsupported(String),
+    #[error("internal error")]
+    Internal,
     #[error("command not permitted for this role")]
     Forbidden,
     #[error("invalid command: {0}")]
@@ -40,6 +44,8 @@ impl CoreError {
             Self::NothingInPreview => "nothing_in_preview",
             Self::BibleNotResolved => "bible_not_resolved",
             Self::UnknownTimer(_) => "unknown_timer",
+            Self::Unsupported(_) => "unsupported",
+            Self::Internal => "internal",
             Self::Forbidden => "forbidden",
             Self::Invalid(_) => "invalid",
         }

@@ -36,7 +36,11 @@ impl MemoryStore {
 
     /// Builds the repository bundle backed by one shared store.
     pub fn repos() -> Repos {
-        let s = Arc::new(Self::new());
+        Self::bundle(Arc::new(Self::new()))
+    }
+
+    /// Wraps an existing store (kept by the caller for direct seeding) as a repository bundle.
+    pub fn bundle(s: Arc<Self>) -> Repos {
         Repos {
             songs: s.clone(),
             bibles: s.clone(),

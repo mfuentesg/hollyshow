@@ -7,9 +7,11 @@
 //! * Relative commands (`Next`, `Prev`) are rejected with [`CoreError::VersionMismatch`] when
 //!   `expected_version` is set and stale, so retries and double taps cannot skip slides.
 //! * Every accepted, state-changing command increments `version` by exactly one.
-//! * Time never comes from the system clock; commands carry `at_ms`.
+//! * Time never comes from the system clock; the host passes it in [`Ctx`].
+//! * The reducer only sees [`EngineCommand`]s, which are built by host code and never come from
+//!   the wire, so nothing a remote sends can inject a slide or a timestamp.
 
-use crate::command::Command;
+use crate::command::{Command, Ctx, EngineCommand, Restore};
 use crate::error::CoreError;
 use crate::event::Event;
 use crate::state::{Cue, PresentationState, StageMessage, Target, TimerRun};
@@ -17,9 +19,56 @@ use crate::state::{Cue, PresentationState, StageMessage, Target, TimerRun};
 pub type Applied = (PresentationState, Vec<Event>);
 
 /// Applies `cmd` to `state`, returning the successor state and the events it produced.
-pub fn apply(state: &PresentationState, cmd: Command) -> Result<Applied, CoreError> {
+pub fn apply(
+    state: &PresentationState,
+    ctx: Ctx,
+    cmd: EngineCommand,
+) -> Result<Applied, CoreError> {
     let mut next = state.clone();
     let mut events = Vec::new();
+
+    let cmd = match cmd {
+        EngineCommand::Client(c) => c,
+        EngineCommand::ShowBible {
+            target,
+            layout,
+            mut slide,
+        } => {
+            slide.layout = layout;
+            let cue = Cue {
+                item_id: None,
+                slide_index: 0,
+                slide,
+            };
+            match target {
+                Target::Live => set_live(&mut next, &mut events, cue),
+                Target::Preview => set_preview(&mut next, &mut events, Some(cue)),
+            }
+            return finish(state, next, events);
+        }
+        EngineCommand::LoadShow { entries } => {
+            if next.show != entries {
+                events.push(Event::ShowLoaded {
+                    entries: entries.len() as u32,
+                });
+                next.show = entries;
+                next.show_revision += 1;
+                // Preview pointed into the old show; live keeps its own copy and stays on screen.
+                next.preview = None;
+            }
+            return finish(state, next, events);
+        }
+        EngineCommand::Restore(Restore {
+            live,
+            timers,
+            service_mode,
+        }) => {
+            next.live = live;
+            next.timers = timers;
+            next.service_mode = service_mode;
+            return finish(state, next, events);
+        }
+    };
 
     match cmd {
         Command::Next { expected_version } => {
@@ -61,11 +110,12 @@ pub fn apply(state: &PresentationState, cmd: Command) -> Result<Applied, CoreErr
         Command::ShowItem { item_id, target } => {
             return apply(
                 state,
-                Command::GoTo {
+                ctx,
+                EngineCommand::Client(Command::GoTo {
                     item_id,
                     slide_index: 0,
                     target,
-                },
+                }),
             );
         }
         Command::TakePreview => {
@@ -93,29 +143,12 @@ pub fn apply(state: &PresentationState, cmd: Command) -> Result<Applied, CoreErr
                 events.push(Event::LogoChanged { on });
             }
         }
-        Command::ShowBible {
-            passage: _,
-            versions,
-            layout,
-            target,
-            resolved,
-        } => {
-            if versions.is_empty() {
-                return Err(CoreError::Invalid(
-                    "ShowBible needs at least one version".into(),
-                ));
-            }
-            let mut slide = resolved.ok_or(CoreError::BibleNotResolved)?;
-            slide.layout = layout;
-            let cue = Cue {
-                item_id: None,
-                slide_index: 0,
-                slide,
-            };
-            match target {
-                Target::Live => set_live(&mut next, &mut events, cue),
-                Target::Preview => set_preview(&mut next, &mut events, Some(cue)),
-            }
+        // Needs host-resolved text: the app layer turns it into `EngineCommand::ShowBible`.
+        Command::ShowBible { .. } => return Err(CoreError::BibleNotResolved),
+        Command::SetActivePlaylist { .. } | Command::RefreshShow | Command::Unknown => {
+            return Err(CoreError::Unsupported(
+                "not a presentation command".to_owned(),
+            ))
         }
         Command::StageMessage { text } => {
             let msg = text
@@ -127,17 +160,6 @@ pub fn apply(state: &PresentationState, cmd: Command) -> Result<Applied, CoreErr
                     text: msg.as_ref().map(|m| m.text.clone()),
                 });
                 next.stage_message = msg;
-            }
-        }
-        Command::LoadShow { entries } => {
-            if next.show != entries {
-                events.push(Event::ShowLoaded {
-                    entries: entries.len() as u32,
-                });
-                next.show = entries;
-                next.show_revision += 1;
-                // Preview pointed into the old show; live keeps its own copy and stays on screen.
-                next.preview = None;
             }
         }
         Command::UpdateSlide {
@@ -180,29 +202,39 @@ pub fn apply(state: &PresentationState, cmd: Command) -> Result<Applied, CoreErr
         Command::SetTimer { timer } => {
             let id = timer.id.clone();
             match next.timers.iter_mut().find(|t| t.id == id) {
-                Some(existing) if *existing == timer => {}
                 Some(existing) => {
-                    *existing = timer;
-                    events.push(Event::TimerChanged { id });
+                    // Run state belongs to the host; only the configuration is client-editable.
+                    let mut updated = timer;
+                    updated.run = existing.run;
+                    updated.started_at_ms = existing.started_at_ms;
+                    updated.elapsed_ms = existing.elapsed_ms;
+                    if *existing != updated {
+                        *existing = updated;
+                        events.push(Event::TimerChanged { id });
+                    }
                 }
                 None => {
+                    let mut timer = timer;
+                    timer.run = TimerRun::Stopped;
+                    timer.started_at_ms = None;
+                    timer.elapsed_ms = 0;
                     next.timers.push(timer);
                     events.push(Event::TimerChanged { id });
                 }
             }
         }
-        Command::StartTimer { id, at_ms } => {
+        Command::StartTimer { id } => {
             let t = timer_mut(&mut next, &id)?;
             if t.run != TimerRun::Running {
                 t.run = TimerRun::Running;
-                t.started_at_ms = Some(at_ms);
+                t.started_at_ms = Some(ctx.now_ms);
                 events.push(Event::TimerChanged { id });
             }
         }
-        Command::PauseTimer { id, at_ms } => {
+        Command::PauseTimer { id } => {
             let t = timer_mut(&mut next, &id)?;
             if t.run == TimerRun::Running {
-                t.elapsed_ms = t.elapsed_at(at_ms);
+                t.elapsed_ms = t.elapsed_at(ctx.now_ms);
                 t.run = TimerRun::Paused;
                 t.started_at_ms = None;
                 events.push(Event::TimerChanged { id });
@@ -239,6 +271,15 @@ pub fn apply(state: &PresentationState, cmd: Command) -> Result<Applied, CoreErr
         }
     }
 
+    finish(state, next, events)
+}
+
+/// Bumps the version when something observable changed.
+fn finish(
+    state: &PresentationState,
+    mut next: PresentationState,
+    events: Vec<Event>,
+) -> Result<Applied, CoreError> {
     if next == *state {
         // Idempotent repeat: nothing observable changed.
         return Ok((next, Vec::new()));
@@ -330,6 +371,18 @@ mod tests {
     use crate::ids::{ItemId, TimerId};
     use crate::state::{ShowEntry, Slide, SlideKind, Timer, TimerKind};
 
+    fn apply_at(
+        s: &PresentationState,
+        now_ms: i64,
+        c: impl Into<EngineCommand>,
+    ) -> Result<Applied, CoreError> {
+        super::apply(s, Ctx { now_ms }, c.into())
+    }
+
+    fn apply(s: &PresentationState, c: impl Into<EngineCommand>) -> Result<Applied, CoreError> {
+        apply_at(s, 0, c)
+    }
+
     fn entry(id: &str, n: usize) -> ShowEntry {
         ShowEntry {
             item_id: ItemId::new(id),
@@ -345,7 +398,7 @@ mod tests {
         let s = PresentationState::default();
         apply(
             &s,
-            Command::LoadShow {
+            EngineCommand::LoadShow {
                 entries: vec![entry("a", 2), entry("empty", 0), entry("b", 2)],
             },
         )
@@ -353,7 +406,7 @@ mod tests {
         .0
     }
 
-    fn run(s: &PresentationState, c: Command) -> PresentationState {
+    fn run(s: &PresentationState, c: impl Into<EngineCommand>) -> PresentationState {
         apply(s, c).unwrap().0
     }
 
@@ -518,26 +571,44 @@ mod tests {
         assert_eq!(s.live.as_ref().unwrap().slide.id.as_str(), "b:0");
     }
 
-    fn bible_cmd(resolved: Option<Slide>) -> Command {
-        Command::ShowBible {
-            passage: Passage::parse_osis("John.3.16").unwrap(),
-            versions: vec![VersionCode("RVR1909".into())],
+    fn bible_cmd(slide: Slide) -> EngineCommand {
+        EngineCommand::ShowBible {
             layout: ParallelLayout::Columns,
             target: Target::Live,
-            resolved,
+            slide,
         }
     }
 
     #[test]
-    fn show_bible_requires_host_resolution() {
+    fn wire_show_bible_is_refused_by_the_reducer() {
         let s = loaded();
-        assert_eq!(
-            apply(&s, bible_cmd(None)).unwrap_err(),
-            CoreError::BibleNotResolved
-        );
+        let wire = Command::ShowBible {
+            passage: Passage::parse_osis("John.3.16").unwrap(),
+            versions: vec![VersionCode("RVR1909".into())],
+            layout: ParallelLayout::Columns,
+            target: Target::Live,
+        };
+        assert_eq!(apply(&s, wire).unwrap_err(), CoreError::BibleNotResolved);
+    }
+
+    #[test]
+    fn host_only_and_unknown_commands_are_unsupported() {
+        let s = loaded();
+        for c in [
+            Command::RefreshShow,
+            Command::SetActivePlaylist { id: "p".into() },
+            Command::Unknown,
+        ] {
+            assert!(matches!(apply(&s, c), Err(CoreError::Unsupported(_))));
+        }
+    }
+
+    #[test]
+    fn host_resolved_bible_goes_live() {
+        let s = loaded();
         let mut slide = Slide::blank("bible");
         slide.kind = SlideKind::Bible;
-        let s = run(&s, bible_cmd(Some(slide)));
+        let s = run(&s, bible_cmd(slide));
         let live = s.live.unwrap();
         assert!(live.item_id.is_none());
         assert_eq!(live.slide.kind, SlideKind::Bible);
@@ -546,7 +617,7 @@ mod tests {
     #[test]
     fn next_after_adhoc_bible_resumes_show() {
         let mut s = loaded();
-        s = run(&s, bible_cmd(Some(Slide::blank("bible"))));
+        s = run(&s, bible_cmd(Slide::blank("bible")));
         s = run(&s, next(None));
         assert_eq!(s.live.unwrap().slide.id.as_str(), "a:0");
     }
@@ -605,7 +676,7 @@ mod tests {
         let live = s.live.clone();
         s = run(
             &s,
-            Command::LoadShow {
+            EngineCommand::LoadShow {
                 entries: vec![entry("zzz", 1)],
             },
         );
@@ -617,49 +688,75 @@ mod tests {
     #[test]
     fn timers_run_pause_reset() {
         let mut s = loaded();
+        let id = || TimerId::new("svc");
         let t = Timer::new("svc", "Culto", TimerKind::Countdown, 60);
         s = run(&s, Command::SetTimer { timer: t });
-        s = run(
-            &s,
-            Command::StartTimer {
-                id: TimerId::new("svc"),
-                at_ms: 1_000,
-            },
-        );
+        s = apply_at(&s, 1_000, Command::StartTimer { id: id() })
+            .unwrap()
+            .0;
         assert_eq!(s.timers[0].remaining_at(11_000), Some(50_000));
-        s = run(
-            &s,
-            Command::PauseTimer {
-                id: TimerId::new("svc"),
-                at_ms: 11_000,
-            },
-        );
+        s = apply_at(&s, 11_000, Command::PauseTimer { id: id() })
+            .unwrap()
+            .0;
         assert_eq!(s.timers[0].remaining_at(99_000), Some(50_000));
-        s = run(
-            &s,
-            Command::StartTimer {
-                id: TimerId::new("svc"),
-                at_ms: 20_000,
-            },
-        );
+        s = apply_at(&s, 20_000, Command::StartTimer { id: id() })
+            .unwrap()
+            .0;
         assert_eq!(s.timers[0].remaining_at(25_000), Some(45_000));
-        s = run(
-            &s,
-            Command::ResetTimer {
-                id: TimerId::new("svc"),
-            },
-        );
+        s = run(&s, Command::ResetTimer { id: id() });
         assert_eq!(s.timers[0].remaining_at(0), Some(60_000));
         assert!(matches!(
             apply(
                 &s,
                 Command::StartTimer {
-                    id: TimerId::new("nope"),
-                    at_ms: 0
+                    id: TimerId::new("nope")
                 }
             ),
             Err(CoreError::UnknownTimer(_))
         ));
+    }
+
+    #[test]
+    fn set_timer_ignores_client_supplied_run_state() {
+        let mut forged = Timer::new("svc", "Culto", TimerKind::Countdown, 60);
+        forged.run = TimerRun::Running;
+        forged.started_at_ms = Some(1);
+        forged.elapsed_ms = 59_000;
+        let s = run(
+            &loaded(),
+            Command::SetTimer {
+                timer: forged.clone(),
+            },
+        );
+        assert_eq!(s.timers[0].run, TimerRun::Stopped);
+        assert_eq!(s.timers[0].elapsed_ms, 0);
+        // Renaming a running timer keeps its run state.
+        let s = apply_at(&s, 5_000, Command::StartTimer { id: "svc".into() })
+            .unwrap()
+            .0;
+        forged.label = "Nuevo".into();
+        let s = run(&s, Command::SetTimer { timer: forged });
+        assert_eq!(s.timers[0].label, "Nuevo");
+        assert_eq!(s.timers[0].run, TimerRun::Running);
+        assert_eq!(s.timers[0].started_at_ms, Some(5_000));
+    }
+
+    #[test]
+    fn restore_sets_live_and_timers_once() {
+        let live = Cue {
+            item_id: None,
+            slide_index: 0,
+            slide: Slide::blank("x"),
+        };
+        let r = Restore {
+            live: Some(live.clone()),
+            timers: vec![Timer::new("t", "t", TimerKind::Stopwatch, 0)],
+            service_mode: true,
+        };
+        let s = run(&PresentationState::default(), EngineCommand::Restore(r));
+        assert_eq!(s.live, Some(live));
+        assert!(s.service_mode);
+        assert_eq!(s.version, 1);
     }
 
     #[test]

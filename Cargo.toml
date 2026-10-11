@@ -2,9 +2,12 @@
 resolver = "2"
 members = [
   "crates/core",
-  "crates/storage",
+  "crates/engine",
+  "crates/storage-api",
+  "crates/storage-sqlite",
   "crates/songs",
   "crates/bible",
+  "crates/app",
   "crates/server",
   "apps/desktop/src-tauri",
 ]
@@ -21,16 +24,22 @@ authors = ["HollyShow contributors"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-ts-rs = { version = "12", features = ["serde-compat"] }
+ts-rs = { version = "12", features = ["serde-compat", "no-serde-warnings"] }
 tokio = { version = "1", features = ["sync", "rt", "macros", "time", "net"] }
 axum = { version = "0.8", features = ["ws"] }
 tower = "0.5"
 rusqlite = { version = "0.40", features = ["bundled"] }
 tracing = "0.1"
 unicode-normalization = "0.1"
+rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+mime_guess = "2"
+log = "0.4"
 
 hollyshow-core = { path = "crates/core" }
-hollyshow-storage = { path = "crates/storage" }
+hollyshow-engine = { path = "crates/engine" }
+hollyshow-storage-api = { path = "crates/storage-api" }
+hollyshow-storage-sqlite = { path = "crates/storage-sqlite" }
+hollyshow-app = { path = "crates/app" }
 hollyshow-songs = { path = "crates/songs" }
 hollyshow-bible = { path = "crates/bible" }
 hollyshow-server = { path = "crates/server" }
@@ -46,7 +55,8 @@ all = { level = "warn", priority = -1 }
 lto = "thin"
 codegen-units = 4
 strip = true
-panic = "abort"
+# No `panic = "abort"`: a panic in one connection task or IPC command must never take down the
+# projector window. Panics are logged by a hook and contained (see docs/ARCHITECTURE.md).
 
 [profile.dev.package."*"]
 opt-level = 1

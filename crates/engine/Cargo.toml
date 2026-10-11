@@ -1,0 +1,14 @@
+[package]
+name = "hollyshow-engine"
+description = "Thread-safe owner of the presentation state: command dedup per session, host clock, broadcast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hollyshow-core.workspace = true
+tokio = { workspace = true, features = ["sync"] }

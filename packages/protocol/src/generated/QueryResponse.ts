@@ -8,4 +8,4 @@ import type { SongSummary } from "./SongSummary";
 import type { Theme } from "./Theme";
 import type { Verse } from "./Verse";
 
-export type QueryResponse = { "kind": "songs", items: Array<SongSummary>, } | { "kind": "song", song: Song | null, } | { "kind": "playlists", items: Array<PlaylistSummary>, } | { "kind": "playlist", playlist: Playlist | null, } | { "kind": "bibleVersions", items: Array<BibleVersion>, } | { "kind": "passage", verses: Array<Verse>, } | { "kind": "bibleHits", items: Array<BibleHit>, } | { "kind": "themes", items: Array<Theme>, };
+export type QueryResponse = { "kind": "songs", items: Array<SongSummary>, } | { "kind": "song", song: Song | null, } | { "kind": "playlists", items: Array<PlaylistSummary>, } | { "kind": "playlist", playlist: Playlist | null, } | { "kind": "bibleVersions", items: Array<BibleVersion>, } | { "kind": "passage", verses: Array<Verse>, } | { "kind": "bibleHits", items: Array<BibleHit>, } | { "kind": "themes", items: Array<Theme>, } | { "kind": "unknown" };

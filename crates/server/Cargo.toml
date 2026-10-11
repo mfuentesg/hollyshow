@@ -5,20 +5,26 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+build = "build.rs"
 
 [lints]
 workspace = true
 
 [dependencies]
 hollyshow-core.workspace = true
-hollyshow-storage.workspace = true
+hollyshow-app.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+rust-embed.workspace = true
+mime_guess.workspace = true
 
 [dev-dependencies]
+hollyshow-engine.workspace = true
+hollyshow-songs.workspace = true
+hollyshow-storage-api = { workspace = true, features = ["testing"] }
 tower.workspace = true
 http-body-util = "0.1"

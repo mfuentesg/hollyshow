@@ -1,0 +1,19 @@
+[package]
+name = "hollyshow-storage-api"
+description = "Repository traits (the persistence boundary) plus an in-memory store behind the `testing` feature"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Exposes `memory::MemoryStore` for tests and UI development. Never enabled in release builds
+# once the SQLite store is wired.
+testing = []
+
+[dependencies]
+hollyshow-core.workspace = true
+thiserror.workspace = true

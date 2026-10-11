@@ -20,14 +20,16 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 hollyshow-core.workspace = true
-hollyshow-storage.workspace = true
+hollyshow-app.workspace = true
+hollyshow-engine.workspace = true
 hollyshow-songs.workspace = true
-hollyshow-bible.workspace = true
 hollyshow-server.workspace = true
+# In-memory repositories until the SQLite store is wired in `state.rs`.
+hollyshow-storage-api = { workspace = true, features = ["testing"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-log = "2"
-log = "0.4"
+log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

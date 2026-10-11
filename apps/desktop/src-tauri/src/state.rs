@@ -1,22 +1,27 @@
 //! Application state shared by every Tauri command and the event bridge.
 
-use hollyshow_core::{Command, Engine};
-use hollyshow_storage::{memory::MemoryStore, Repos};
+use hollyshow_app::AppService;
+use hollyshow_engine::Engine;
+use hollyshow_songs::DefaultSplitter;
+use hollyshow_storage_api::memory::MemoryStore;
 use std::sync::Arc;
 
 pub struct AppState {
-    pub engine: Arc<Engine>,
-    pub repos: Repos,
+    pub app: Arc<AppService>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         // Storage builder: replace `MemoryStore` with the SQLite repos opened under
-        // `app.path().app_data_dir()`; nothing else in this crate has to change.
-        let state = Self {
-            engine: Arc::new(Engine::default()),
-            repos: MemoryStore::repos(),
-        };
+        // `app.path().app_data_dir()` (crate `hollyshow-storage-sqlite`); nothing else in this
+        // crate has to change.
+        let app = Arc::new(AppService::new(
+            MemoryStore::repos(),
+            Arc::new(Engine::default()),
+            Arc::new(DefaultSplitter),
+        ));
+        app.restore();
+        let state = Self { app };
         #[cfg(debug_assertions)]
         state.load_demo_show();
         state
@@ -26,6 +31,9 @@ impl AppState {
     #[cfg(debug_assertions)]
     fn load_demo_show(&self) {
         use hollyshow_core::{ShowEntry, Slide};
+        if !self.app.engine().snapshot().show.is_empty() {
+            return;
+        }
         let entry = |id: &str, title: &str, slides: Vec<Slide>| ShowEntry {
             item_id: id.into(),
             title: title.into(),
@@ -55,7 +63,7 @@ impl AppState {
                 vec![Slide::lyrics("demo-text:0", None, &["Bienvenidos"])],
             ),
         ];
-        let _ = self.engine.dispatch(None, Command::LoadShow { entries });
+        let _ = self.app.load_entries(entries);
     }
 }
 

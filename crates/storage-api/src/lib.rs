@@ -1,12 +1,12 @@
-//! Persistence boundary. `server` and `desktop` depend on the **traits** in [`repo`]; the SQLite
-//! implementation (rusqlite + FTS5, migrations, backups) is added in this crate behind them, and
-//! [`memory::MemoryStore`] serves tests and UI development.
+//! Persistence boundary: only the **traits** in [`repo`] and the error type. No database
+//! dependency lives here. The SQLite implementation is `hollyshow-storage-sqlite`;
+//! `memory::MemoryStore` (feature `testing`) serves tests and UI development.
 //!
 //! All methods are synchronous (rusqlite is blocking). Async callers wrap them in
 //! `tokio::task::spawn_blocking`.
 
 pub mod error;
-pub mod host;
+#[cfg(any(test, feature = "testing"))]
 pub mod memory;
 pub mod repo;
 

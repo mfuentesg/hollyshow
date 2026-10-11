@@ -7,16 +7,35 @@ use crate::bible::{BibleHit, BibleVersion, Passage, Verse, VersionCode};
 use crate::command::Command;
 use crate::error::{CoreError, WireError};
 use crate::event::Event;
-use crate::ids::{CommandId, PlaylistId, SongId};
+use crate::ids::{CommandId, PlaylistId, QueryId, SongId};
 use crate::playlist::{Playlist, PlaylistSummary};
 use crate::song::{Song, SongSummary};
-use crate::state::{PresentationState, StateView};
+use crate::state::{PresentationState, ShowEntry, StateView};
 use crate::theme::Theme;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Bumped on any breaking change of the wire format. Servers reject other versions in `hello`.
+/// Newest protocol revision this build speaks. Bumped on any breaking change of the wire format.
 pub const PROTOCOL_VERSION: u32 = 1;
+/// Oldest revision this build still speaks. `hello` carries the client's `[min, max]` range and
+/// the server answers with the highest revision both support (see [`negotiate`]).
+pub const PROTOCOL_MIN: u32 = 1;
+/// Optional features advertised in `hello`/`welcome` so peers can degrade instead of failing.
+pub const CAPABILITIES: &[&str] = &["bible-parallel", "timers", "stage-feed", "live-edit"];
+
+/// Picks the protocol revision for a client that supports `[client_min, client_max]`.
+pub fn negotiate(client_min: u32, client_max: u32) -> Result<u32, WireError> {
+    let v = client_max.min(PROTOCOL_VERSION);
+    if client_min > client_max || v < client_min.max(PROTOCOL_MIN) {
+        return Err(WireError {
+            code: "protocol_mismatch".into(),
+            message: format!(
+                "client speaks {client_min}..={client_max}, server speaks {PROTOCOL_MIN}..={PROTOCOL_VERSION}"
+            ),
+        });
+    }
+    Ok(v)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +57,7 @@ impl Role {
     /// Authorisation matrix, enforced by the server before a command reaches the engine.
     pub fn can_dispatch(self, cmd: &Command) -> bool {
         match self {
+            _ if matches!(cmd, Command::Unknown) => false,
             Role::Operator => true,
             Role::Pastor => matches!(cmd, Command::ShowBible { .. }),
             Role::Musician | Role::Stage | Role::Congregation => false,
@@ -46,6 +66,7 @@ impl Role {
 
     pub fn can_query(self, q: &QueryRequest) -> bool {
         match self {
+            _ if matches!(q, QueryRequest::Unknown) => false,
             Role::Operator => true,
             Role::Musician => matches!(
                 q,
@@ -61,9 +82,55 @@ impl Role {
         }
     }
 
-    /// Congregation and stage clients get the live view only, never the whole service.
+    /// Whether the role receives the expanded service (every slide of every item).
     pub fn sees_full_show(self) -> bool {
         matches!(self, Role::Operator | Role::Musician | Role::Pastor)
+    }
+
+    /// Whether the role sees the queued next slide. Stage displays need it; the audience does not.
+    pub fn sees_preview(self) -> bool {
+        !matches!(self, Role::Congregation)
+    }
+
+    /// Whether the role sees timers, stage messages, output looks and service mode.
+    pub fn sees_operations(self) -> bool {
+        !matches!(self, Role::Congregation)
+    }
+}
+
+/// The only way state reaches a network client: everything a role may not see is removed here,
+/// by construction, instead of relying on each sender to remember a flag.
+pub fn project_view(view: &StateView, role: Role) -> StateView {
+    let mut v = view.clone();
+    if !role.sees_preview() {
+        v.preview = None;
+    }
+    if !role.sees_operations() {
+        v.stage_message = None;
+        v.timers.clear();
+        v.outputs.clear();
+        v.service_mode = false;
+    }
+    if !role.sees_full_show() {
+        // These roles never hold a show, so a revision bump must not trigger pointless resyncs.
+        v.show_revision = 0;
+    }
+    v
+}
+
+/// Role-filtered snapshot: `show` is `None` for roles that must not see the whole service.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RoleSnapshot {
+    pub view: StateView,
+    pub show: Option<Vec<ShowEntry>>,
+}
+
+pub fn project(state: &PresentationState, role: Role) -> RoleSnapshot {
+    RoleSnapshot {
+        view: project_view(&state.view(), role),
+        show: role.sees_full_show().then(|| state.show.clone()),
     }
 }
 
@@ -97,6 +164,9 @@ pub enum QueryRequest {
         limit: u32,
     },
     ListThemes,
+    /// A query from a newer protocol revision; answered with `unsupported`.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -107,14 +177,33 @@ pub enum QueryRequest {
 )]
 #[ts(export)]
 pub enum QueryResponse {
-    Songs { items: Vec<SongSummary> },
-    Song { song: Option<Song> },
-    Playlists { items: Vec<PlaylistSummary> },
-    Playlist { playlist: Option<Playlist> },
-    BibleVersions { items: Vec<BibleVersion> },
-    Passage { verses: Vec<Verse> },
-    BibleHits { items: Vec<BibleHit> },
-    Themes { items: Vec<Theme> },
+    Songs {
+        items: Vec<SongSummary>,
+    },
+    Song {
+        song: Option<Song>,
+    },
+    Playlists {
+        items: Vec<PlaylistSummary>,
+    },
+    Playlist {
+        playlist: Option<Playlist>,
+    },
+    BibleVersions {
+        items: Vec<BibleVersion>,
+    },
+    Passage {
+        verses: Vec<Verse>,
+    },
+    BibleHits {
+        items: Vec<BibleHit>,
+    },
+    Themes {
+        items: Vec<Theme>,
+    },
+    /// Placeholder so old clients survive new response kinds.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -128,18 +217,23 @@ pub enum QueryResponse {
 pub enum ClientMsg {
     /// First frame. `token` resumes a paired device; `pin` pairs a new one.
     Hello {
-        protocol: u32,
+        /// Lowest and highest protocol revision the client speaks.
+        protocol_min: u32,
+        protocol_max: u32,
         role: Role,
         device_name: String,
         token: Option<String>,
         pin: Option<String>,
+        /// Optional features the client understands (see [`CAPABILITIES`]).
+        #[serde(default)]
+        capabilities: Vec<String>,
     },
     Command {
         id: CommandId,
         cmd: Command,
     },
     Query {
-        id: CommandId,
+        id: QueryId,
         query: QueryRequest,
     },
     /// Ask for a fresh [`ServerMsg::Snapshot`] (after reconnect or `showRevision` change).
@@ -148,6 +242,9 @@ pub enum ClientMsg {
         #[ts(type = "number")]
         t: i64,
     },
+    /// A frame type from a newer protocol revision; answered with an `unsupported` error.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -160,40 +257,66 @@ pub enum ClientMsg {
 #[allow(clippy::large_enum_variant)]
 pub enum ServerMsg {
     Welcome {
+        /// Negotiated protocol revision.
         protocol: u32,
         role: Role,
         /// Session token to store for reconnects (only when pairing succeeded).
         token: Option<String>,
         server_name: String,
         heartbeat_ms: u32,
-    },
-    /// Full state, sent after `Welcome` and on `Resync`.
-    Snapshot { state: PresentationState },
-    /// Cheap state broadcast after every change; `showRevision` tells when to resync.
-    State { view: StateView },
-    Ack {
-        id: CommandId,
-        ok: bool,
-        error: Option<WireError>,
+        capabilities: Vec<String>,
+        /// Server wall clock (epoch ms) at send time; clients derive `offset = now_ms - local`
+        /// to render timers that agree with the projector.
         #[ts(type = "number")]
-        version: u64,
+        now_ms: i64,
     },
+    /// Role-filtered full state, sent after `Welcome` and on `Resync`.
+    Snapshot {
+        snapshot: RoleSnapshot,
+        #[ts(type = "number")]
+        now_ms: i64,
+    },
+    /// Cheap role-filtered state broadcast after every change; `showRevision` tells when to
+    /// resync.
+    State {
+        view: StateView,
+        #[ts(type = "number")]
+        now_ms: i64,
+    },
+    /// Same verdict as the IPC [`Ack`], tagged with the command id it answers.
+    Ack { id: CommandId, ack: Ack },
     QueryResult {
-        id: CommandId,
+        id: QueryId,
         result: Option<QueryResponse>,
         error: Option<WireError>,
     },
+    /// `version` is the state version after the change; consecutive events from one client must
+    /// have consecutive versions, otherwise it missed some and sends `Resync`.
     Event {
         #[ts(type = "number")]
         version: u64,
         event: Event,
     },
+    /// The server could not deliver every update (slow client); a fresh `State` precedes this and
+    /// the client should request a `Snapshot`.
+    Resync { reason: ResyncReason },
     Pong {
         #[ts(type = "number")]
         t: i64,
     },
     /// Fatal: the server closes the socket after sending this (bad protocol, bad PIN, kicked...).
     Reject { error: WireError },
+    /// A message type from a newer protocol revision; ignored by old clients.
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ResyncReason {
+    /// The client's receive queue overflowed and updates were dropped.
+    Lagged,
 }
 
 /// A physical display as reported by the desktop shell, for the "choose output screen" dialog.
@@ -226,21 +349,43 @@ pub struct Ack {
 }
 
 impl ServerMsg {
-    pub fn ack_ok(id: CommandId, version: u64) -> Self {
-        Self::Ack {
-            id,
+    pub fn ack(id: CommandId, ack: Ack) -> Self {
+        Self::Ack { id, ack }
+    }
+
+    /// The messages to send one client for an engine update: the role-filtered state followed by
+    /// each visible event. This is the only way an [`Update`] reaches the network.
+    pub fn from_update(update: &crate::event::Update, role: Role, now_ms: i64) -> Vec<ServerMsg> {
+        let u = update.for_role(role);
+        let mut out = Vec::with_capacity(1 + u.events.len());
+        out.push(ServerMsg::State {
+            view: u.view,
+            now_ms,
+        });
+        out.extend(u.events.into_iter().map(|event| ServerMsg::Event {
+            version: u.version,
+            event,
+        }));
+        out
+    }
+}
+
+impl Ack {
+    pub fn ok(version: u64, duplicate: bool) -> Self {
+        Self {
             ok: true,
-            error: None,
             version,
+            error: None,
+            duplicate,
         }
     }
 
-    pub fn ack_err(id: CommandId, version: u64, err: &CoreError) -> Self {
-        Self::Ack {
-            id,
+    pub fn err(version: u64, err: &CoreError, duplicate: bool) -> Self {
+        Self {
             ok: false,
-            error: Some(err.into()),
             version,
+            error: Some(err.into()),
+            duplicate,
         }
     }
 }
@@ -282,20 +427,129 @@ mod tests {
     #[test]
     fn hello_and_ack_serialise_camel_case() {
         let hello = ClientMsg::Hello {
-            protocol: PROTOCOL_VERSION,
+            protocol_min: PROTOCOL_MIN,
+            protocol_max: PROTOCOL_VERSION,
             role: Role::Pastor,
             device_name: "Pixel".into(),
             token: None,
             pin: Some("123456".into()),
+            capabilities: vec!["timers".into()],
         };
         let v = serde_json::to_value(&hello).unwrap();
         assert_eq!(v["type"], "hello");
         assert_eq!(v["deviceName"], "Pixel");
-        let ack = serde_json::to_value(ServerMsg::ack_ok("c-1".into(), 7)).unwrap();
+        assert_eq!(v["protocolMax"], PROTOCOL_VERSION);
+        let ack = serde_json::to_value(ServerMsg::ack("c-1".into(), Ack::ok(7, false))).unwrap();
         assert_eq!(
             ack,
-            json!({"type":"ack","id":"c-1","ok":true,"error":null,"version":7})
+            json!({"type":"ack","id":"c-1","ack":{"ok":true,"version":7,"error":null,"duplicate":false}})
         );
+    }
+
+    #[test]
+    fn unknown_kinds_degrade_instead_of_failing_the_frame() {
+        let c: ClientMsg = serde_json::from_value(json!({"type":"teleport","x":1})).unwrap();
+        assert_eq!(c, ClientMsg::Unknown);
+        let cmd: Command = serde_json::from_value(json!({"kind":"freeze","on":true})).unwrap();
+        assert_eq!(cmd, Command::Unknown);
+        let ev: Event = serde_json::from_value(json!({"kind":"somethingNew"})).unwrap();
+        assert_eq!(ev, Event::Unknown);
+        let m: ServerMsg = serde_json::from_value(json!({"type":"newThing"})).unwrap();
+        assert_eq!(m, ServerMsg::Unknown);
+        let q: QueryRequest = serde_json::from_value(json!({"kind":"newQuery"})).unwrap();
+        assert!(!Role::Operator.can_query(&q));
+        assert!(!Role::Operator.can_dispatch(&Command::Unknown));
+    }
+
+    #[test]
+    fn wire_show_bible_cannot_carry_a_slide() {
+        // A hostile `resolved` field is not part of the type, so it is dropped on parse.
+        let cmd: Command = serde_json::from_value(json!({
+            "kind":"showBible",
+            "passage":{"start":{"book":"John","chapter":3,"verse":16},"end":{"book":"John","chapter":3,"verse":16}},
+            "versions":["RVR1909"], "layout":"columns", "target":"live",
+            "resolved": {"id":"evil","kind":"text","lines":["pwned"]}
+        }))
+        .unwrap();
+        let back = serde_json::to_value(&cmd).unwrap();
+        assert!(back.get("resolved").is_none());
+    }
+
+    #[test]
+    fn protocol_negotiation_picks_highest_common_revision() {
+        assert_eq!(negotiate(1, 1).unwrap(), 1);
+        assert_eq!(negotiate(1, 9).unwrap(), PROTOCOL_VERSION);
+        assert_eq!(negotiate(9, 12).unwrap_err().code, "protocol_mismatch");
+        assert_eq!(negotiate(3, 2).unwrap_err().code, "protocol_mismatch");
+    }
+
+    fn sample_state() -> PresentationState {
+        use crate::state::{Cue, Slide, StageMessage};
+        let cue = |id: &str| Cue {
+            item_id: None,
+            slide_index: 0,
+            slide: Slide::blank(id),
+        };
+        PresentationState {
+            show: vec![ShowEntry {
+                item_id: "a".into(),
+                title: "a".into(),
+                slides: vec![Slide::blank("a:0")],
+                duration_secs: None,
+            }],
+            live: Some(cue("live")),
+            preview: Some(cue("next")),
+            stage_message: Some(StageMessage {
+                text: "hola".into(),
+            }),
+            show_revision: 4,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn projection_hides_what_a_role_must_not_see() {
+        let st = sample_state();
+        let op = project(&st, Role::Operator);
+        assert!(op.show.is_some() && op.view.preview.is_some());
+        let stage = project(&st, Role::Stage);
+        assert!(stage.show.is_none());
+        assert!(stage.view.preview.is_some() && stage.view.stage_message.is_some());
+        let crowd = project(&st, Role::Congregation);
+        assert!(crowd.show.is_none());
+        assert!(crowd.view.preview.is_none());
+        assert!(crowd.view.stage_message.is_none() && crowd.view.timers.is_empty());
+        assert!(crowd.view.live.is_some());
+        assert_eq!(crowd.view.show_revision, 0);
+    }
+
+    #[test]
+    fn updates_are_filtered_per_role() {
+        use crate::event::Update;
+        let st = sample_state();
+        let up = Update {
+            version: 5,
+            view: st.view(),
+            events: vec![
+                Event::BlackoutChanged { on: true },
+                Event::LibraryChanged {
+                    scope: crate::event::LibraryScope::Songs,
+                },
+                Event::StageMessageChanged {
+                    text: Some("x".into()),
+                },
+            ],
+        };
+        let msgs = ServerMsg::from_update(&up, Role::Congregation, 9);
+        assert_eq!(msgs.len(), 2);
+        match &msgs[0] {
+            ServerMsg::State { view, now_ms } => {
+                assert!(view.preview.is_none());
+                assert_eq!(*now_ms, 9);
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(ServerMsg::from_update(&up, Role::Operator, 0).len(), 4);
     }
 
     #[test]

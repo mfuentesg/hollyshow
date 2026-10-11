@@ -1,12 +1,20 @@
 //! LAN server. Owner: builder "server". The architect fixed:
-//! * [`ServerConfig`] and [`App`]: the only things the server needs from the host.
-//! * Auth/role enforcement uses `hollyshow_core::Role::can_dispatch` / `can_query`.
-//! * The remote web app (apps/remote `dist`) is embedded with rust-embed and served at `/`.
+//! * [`ServerConfig`] and [`App`]: the only things the server needs from the host. It depends on
+//!   `hollyshow-app` only, never on storage or the engine directly.
+//! * Every command goes through `AppService::dispatch` (role enforcement lives there) and every
+//!   byte of state through `AppService::snapshot_msg` / `RoleFeed`, which are role-projected.
+//! * A WebSocket session creates its `RoleFeed` before sending the snapshot, forwards each
+//!   batch, and on a `Resync` message from the feed expects the client to ask for a snapshot.
+//! * The remote web app (apps/remote `dist`) is embedded with rust-embed (see `build.rs`) and
+//!   served at `/`.
 //! * `/health` is public; everything else requires a paired token (except the pairing endpoints).
+//! * Each connection runs in its own tokio task: a panic there is isolated from the engine.
+
+mod assets;
 
 use axum::{routing::get, Json, Router};
-use hollyshow_core::{Engine, PROTOCOL_VERSION};
-use hollyshow_storage::Repos;
+use hollyshow_app::AppService;
+use hollyshow_core::PROTOCOL_VERSION;
 use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -32,8 +40,7 @@ impl Default for ServerConfig {
 /// Everything the server shares with the host application.
 #[derive(Clone)]
 pub struct App {
-    pub engine: Arc<Engine>,
-    pub repos: Repos,
+    pub service: Arc<AppService>,
     pub config: ServerConfig,
 }
 
@@ -45,17 +52,19 @@ struct Health {
 }
 
 pub fn router(app: App) -> Router {
-    Router::new().route(
-        "/health",
-        get(move || {
-            let h = Health {
-                ok: true,
-                protocol: PROTOCOL_VERSION,
-                name: app.config.server_name.clone(),
-            };
-            async move { Json(h) }
-        }),
-    )
+    Router::new()
+        .route(
+            "/health",
+            get(move || {
+                let h = Health {
+                    ok: true,
+                    protocol: PROTOCOL_VERSION,
+                    name: app.config.server_name.clone(),
+                };
+                async move { Json(h) }
+            }),
+        )
+        .fallback(assets::serve)
 }
 
 #[cfg(test)]
@@ -63,24 +72,51 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use hollyshow_storage::memory::MemoryStore;
+    use hollyshow_engine::Engine;
+    use hollyshow_songs::DefaultSplitter;
+    use hollyshow_storage_api::memory::MemoryStore;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    #[tokio::test]
-    async fn health_reports_protocol_version() {
-        let app = App {
-            engine: Arc::new(Engine::default()),
-            repos: MemoryStore::repos(),
+    fn test_app() -> App {
+        App {
+            service: Arc::new(AppService::new(
+                MemoryStore::repos(),
+                Arc::new(Engine::default()),
+                Arc::new(DefaultSplitter),
+            )),
             config: ServerConfig::default(),
-        };
-        let res = router(app)
-            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+        }
+    }
+
+    async fn get_path(path: &str) -> (StatusCode, Vec<u8>) {
+        let res = router(test_app())
+            .oneshot(Request::get(path).body(Body::empty()).unwrap())
             .await
             .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let status = res.status();
+        (
+            status,
+            res.into_body().collect().await.unwrap().to_bytes().to_vec(),
+        )
+    }
+
+    #[tokio::test]
+    async fn health_reports_protocol_version() {
+        let (status, body) = get_path("/health").await;
+        assert_eq!(status, StatusCode::OK);
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v["protocol"], PROTOCOL_VERSION);
+    }
+
+    #[tokio::test]
+    async fn serves_the_embedded_remote_app_with_spa_fallback() {
+        let (status, body) = get_path("/").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(String::from_utf8_lossy(&body).contains("<html") || body.starts_with(b"<!doctype"));
+        let (status, _) = get_path("/some/client/route").await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = get_path("/assets/missing.js").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }

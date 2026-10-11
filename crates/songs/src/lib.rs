@@ -5,7 +5,7 @@
 //! * [`SongImporter`] implementations parse a file into [`Song`]s (never network, never panic on
 //!   malformed input; return [`ImportError`]).
 
-use hollyshow_core::{ArrangementId, Slide, Song, Theme};
+use hollyshow_core::{ArrangementId, Slide, SlideKind, Song, Theme};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -22,6 +22,8 @@ pub struct SplitOptions {
     pub max_lines: u8,
     /// Honour manual `---` separators inside section lyrics.
     pub honor_manual_breaks: bool,
+    /// Semitones applied to chord charts (`ItemContent::Song::transpose`).
+    pub transpose: i8,
 }
 
 impl SplitOptions {
@@ -29,11 +31,12 @@ impl SplitOptions {
         Self {
             max_lines: theme.max_lines_per_slide.max(1),
             honor_manual_breaks: true,
+            transpose: 0,
         }
     }
 }
 
-pub trait SlideSplitter {
+pub trait SlideSplitter: Send + Sync {
     fn split(
         &self,
         song: &Song,
@@ -46,4 +49,164 @@ pub trait SongImporter {
     /// Short format name: `openlyrics`, `chordpro`, `opensong`, `text`.
     fn format(&self) -> &'static str;
     fn import(&self, input: &str) -> Result<Vec<Song>, ImportError>;
+}
+
+/// Straightforward splitter: sections in arrangement order, `max_lines` lines per slide, manual
+/// `---` breaks honoured, chords stripped from projected lines and kept in `chart`.
+/// Chord transposition is the songs builder's job (`SplitOptions::transpose` is already plumbed).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DefaultSplitter;
+
+/// Removes inline ChordPro chords: `[G]Sublime [D]gracia` becomes `Sublime gracia`.
+pub fn strip_chords(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut in_chord = false;
+    for c in line.chars() {
+        match c {
+            '[' => in_chord = true,
+            ']' if in_chord => in_chord = false,
+            _ if in_chord => {}
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+impl SlideSplitter for DefaultSplitter {
+    fn split(
+        &self,
+        song: &Song,
+        arrangement: Option<&ArrangementId>,
+        opts: SplitOptions,
+    ) -> Vec<Slide> {
+        let max = usize::from(opts.max_lines.max(1));
+        let mut slides = Vec::new();
+        for section in song.ordered_sections(arrangement) {
+            let raw: Vec<&str> = section.lyrics.lines().collect();
+            let trans: Vec<&str> = section
+                .translation
+                .as_deref()
+                .map(|t| t.lines().collect())
+                .unwrap_or_default();
+            // Chunk by index so translation lines stay aligned with lyric lines.
+            let mut chunks: Vec<(usize, usize)> = Vec::new();
+            let mut start = 0;
+            let mut count = 0;
+            for (i, line) in raw.iter().enumerate() {
+                if opts.honor_manual_breaks && line.trim() == "---" {
+                    if count > 0 {
+                        chunks.push((start, i));
+                    }
+                    start = i + 1;
+                    count = 0;
+                    continue;
+                }
+                if line.trim().is_empty() && count == 0 {
+                    start = i + 1;
+                    continue;
+                }
+                count += 1;
+                if count == max {
+                    chunks.push((start, i + 1));
+                    start = i + 1;
+                    count = 0;
+                }
+            }
+            if count > 0 {
+                chunks.push((start, raw.len()));
+            }
+            for (a, b) in chunks {
+                let part = &raw[a..b];
+                let mut slide = Slide::blank(format!("{}:{}", section.id, slides.len()));
+                slide.kind = SlideKind::Lyrics;
+                slide.label = Some(section.label.clone());
+                slide.lines = part.iter().map(|l| strip_chords(l)).collect();
+                slide.chart = part.iter().map(|l| (*l).to_owned()).collect();
+                if !trans.is_empty() {
+                    slide.translation = (a..b)
+                        .map(|i| trans.get(i).copied().unwrap_or("").to_owned())
+                        .collect();
+                }
+                slide.theme_id = song.theme_id.clone();
+                slides.push(slide);
+            }
+        }
+        slides
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hollyshow_core::{Arrangement, Section, SectionId, SectionKind, SongId};
+
+    fn song(lyrics: &str) -> Song {
+        let sec = |id: &str, lyrics: &str| Section {
+            id: SectionId::new(id),
+            kind: SectionKind::Verse,
+            label: id.into(),
+            lyrics: lyrics.into(),
+            translation: None,
+        };
+        Song {
+            id: SongId::new("s"),
+            title: "T".into(),
+            alt_title: None,
+            author: None,
+            copyright: None,
+            ccli: None,
+            key: None,
+            bpm: None,
+            tags: vec![],
+            theme_id: None,
+            sections: vec![sec("v1", lyrics), sec("c", "[G]Coro")],
+            arrangements: vec![Arrangement {
+                id: ArrangementId::new("a"),
+                name: "A".into(),
+                sequence: vec![
+                    SectionId::new("v1"),
+                    SectionId::new("c"),
+                    SectionId::new("v1"),
+                ],
+            }],
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    fn opts(max: u8) -> SplitOptions {
+        SplitOptions {
+            max_lines: max,
+            honor_manual_breaks: true,
+            transpose: 0,
+        }
+    }
+
+    #[test]
+    fn strips_inline_chords() {
+        assert_eq!(strip_chords("[G]Sublime [D/F#]gracia"), "Sublime gracia");
+        assert_eq!(strip_chords("sin acordes"), "sin acordes");
+    }
+
+    #[test]
+    fn follows_arrangement_and_chunks_by_max_lines() {
+        let s = song("uno\ndos\ntres\ncuatro\ncinco");
+        let slides = DefaultSplitter.split(&s, None, opts(2));
+        // v1 -> 3 slides, c -> 1, v1 again -> 3.
+        assert_eq!(slides.len(), 7);
+        assert_eq!(slides[0].lines, ["uno", "dos"]);
+        assert_eq!(slides[2].lines, ["cinco"]);
+        assert_eq!(slides[3].lines, ["Coro"]);
+        assert_eq!(slides[3].chart, ["[G]Coro"]);
+        let ids: std::collections::HashSet<_> = slides.iter().map(|x| &x.id).collect();
+        assert_eq!(ids.len(), slides.len(), "slide ids must be unique");
+    }
+
+    #[test]
+    fn manual_breaks_force_a_new_slide() {
+        let s = song("uno\ndos\n---\ntres");
+        let slides = DefaultSplitter.split(&s, None, opts(4));
+        assert_eq!(slides[0].lines, ["uno", "dos"]);
+        assert_eq!(slides[1].lines, ["tres"]);
+    }
 }

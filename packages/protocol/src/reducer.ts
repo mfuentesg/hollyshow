@@ -108,13 +108,6 @@ export function mockApply(state: PresentationState, cmd: Command): MockResult {
       const t = cmd.text?.trim();
       return done({ ...state, stageMessage: t ? { text: t } : null });
     }
-    case "loadShow":
-      return done({
-        ...state,
-        show: cmd.entries,
-        showRevision: state.showRevision + 1,
-        preview: null,
-      });
     default:
       return fail("unsupported", `mock does not model "${cmd.kind}"`);
   }

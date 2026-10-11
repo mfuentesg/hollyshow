@@ -13,6 +13,7 @@ use tokio::sync::broadcast::error::RecvError;
 pub const UPDATE_EVENT: &str = "hollyshow://update";
 
 pub fn run() {
+    hollyshow_app::install_panic_hook();
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -42,7 +43,7 @@ pub fn run() {
 /// Forwards every engine update to all webviews. Slow consumers that lag are resynced with the
 /// current view instead of replaying missed events, so a window can never get stuck on stale state.
 fn bridge_updates(app: tauri::AppHandle) {
-    let engine = app.state::<AppState>().engine.clone();
+    let engine = app.state::<AppState>().app.engine().clone();
     let mut rx = engine.subscribe();
     tauri::async_runtime::spawn(async move {
         loop {

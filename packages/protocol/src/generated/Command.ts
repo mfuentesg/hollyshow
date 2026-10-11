@@ -4,11 +4,11 @@ import type { OutputId } from "./OutputId";
 import type { OutputLook } from "./OutputLook";
 import type { ParallelLayout } from "./ParallelLayout";
 import type { Passage } from "./Passage";
-import type { ShowEntry } from "./ShowEntry";
+import type { PlaylistId } from "./PlaylistId";
 import type { Slide } from "./Slide";
 import type { Target } from "./Target";
 import type { Timer } from "./Timer";
 import type { TimerId } from "./TimerId";
 import type { VersionCode } from "./VersionCode";
 
-export type Command = { "kind": "next", expectedVersion: number | null, } | { "kind": "prev", expectedVersion: number | null, } | { "kind": "goTo", itemId: ItemId, slideIndex: number, target: Target, } | { "kind": "showItem", itemId: ItemId, target: Target, } | { "kind": "takePreview" } | { "kind": "blackout", on: boolean, } | { "kind": "clear", on: boolean, } | { "kind": "logo", on: boolean, } | { "kind": "showBible", passage: Passage, versions: Array<VersionCode>, layout: ParallelLayout, target: Target, resolved: Slide | null, } | { "kind": "stageMessage", text: string | null, } | { "kind": "loadShow", entries: Array<ShowEntry>, } | { "kind": "updateSlide", itemId: ItemId, slideIndex: number, slide: Slide, } | { "kind": "setTimer", timer: Timer, } | { "kind": "startTimer", id: TimerId, atMs: number, } | { "kind": "pauseTimer", id: TimerId, atMs: number, } | { "kind": "resetTimer", id: TimerId, } | { "kind": "removeTimer", id: TimerId, } | { "kind": "setOutputLook", output: OutputId, look: OutputLook, } | { "kind": "serviceMode", on: boolean, };
+export type Command = { "kind": "next", expectedVersion: number | null, } | { "kind": "prev", expectedVersion: number | null, } | { "kind": "goTo", itemId: ItemId, slideIndex: number, target: Target, } | { "kind": "showItem", itemId: ItemId, target: Target, } | { "kind": "takePreview" } | { "kind": "blackout", on: boolean, } | { "kind": "clear", on: boolean, } | { "kind": "logo", on: boolean, } | { "kind": "showBible", passage: Passage, versions: Array<VersionCode>, layout: ParallelLayout, target: Target, } | { "kind": "stageMessage", text: string | null, } | { "kind": "setActivePlaylist", id: PlaylistId, } | { "kind": "refreshShow" } | { "kind": "updateSlide", itemId: ItemId, slideIndex: number, slide: Slide, } | { "kind": "setTimer", timer: Timer, } | { "kind": "startTimer", id: TimerId, } | { "kind": "pauseTimer", id: TimerId, } | { "kind": "resetTimer", id: TimerId, } | { "kind": "removeTimer", id: TimerId, } | { "kind": "setOutputLook", output: OutputId, look: OutputLook, } | { "kind": "serviceMode", on: boolean, } | { "kind": "unknown" };

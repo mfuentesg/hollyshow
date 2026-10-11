@@ -4,5 +4,8 @@ import type { StateView } from "./StateView";
 
 /**
  * What the engine broadcasts after every accepted command.
+ *
+ * This is the **unfiltered** host-side update (Tauri windows are trusted). Network clients must
+ * only ever receive [`Update::for_role`] output, via `ServerMsg::from_update`.
  */
 export type Update = { version: number, view: StateView, events: Array<Event>, };

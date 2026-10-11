@@ -11,11 +11,12 @@ Rust estable, Node 22, pnpm 10, y las dependencias de Tauri 2 de tu SO
 ## Comandos
 
 ```sh
-pnpm install
+pnpm bootstrap      # primera vez en un clon: instala y construye los frontends (los crates los incrustan)
 pnpm dev            # app de escritorio (Tauri + Vite)
 pnpm dev:web        # solo UI en el navegador con datos de demostración
 pnpm dev:remote     # app remota móvil
-pnpm gen:types      # regenera los tipos TS desde Rust (ts-rs)
+pnpm gen:types      # regenera los tipos TS desde Rust (ts-rs); commitea packages/protocol/src/generated
+pnpm check:version  # Cargo.toml, package.json y tag coherentes (el release lo exige)
 pnpm lint && pnpm typecheck && pnpm test
 cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 pnpm build          # instaladores del SO actual

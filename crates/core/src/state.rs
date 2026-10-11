@@ -138,7 +138,8 @@ pub enum TimerRun {
     Paused,
 }
 
-/// Wall clock is injected by the host (`at_ms` in commands) so the reducer stays pure.
+/// Timestamps come from the host clock (`Ctx::now_ms`), never from clients, so every viewer
+/// computes the same remaining time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

@@ -1,0 +1,25 @@
+[package]
+name = "hollyshow-app"
+description = "Use-case layer: authorisation, command enrichment, show building, persistence of the session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hollyshow-core.workspace = true
+hollyshow-engine.workspace = true
+hollyshow-storage-api.workspace = true
+hollyshow-songs.workspace = true
+hollyshow-bible.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+log.workspace = true
+
+[dev-dependencies]
+hollyshow-storage-api = { workspace = true, features = ["testing"] }
+tokio = { workspace = true, features = ["rt", "macros", "time"] }

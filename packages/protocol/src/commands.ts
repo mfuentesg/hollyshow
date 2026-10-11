@@ -24,7 +24,7 @@ export const commands = {
     versions: VersionCode[],
     target: Target = "live",
     layout: "columns" | "stacked" | "subtitle" = "columns",
-  ): Command => ({ kind: "showBible", passage, versions, layout, target, resolved: null }),
+  ): Command => ({ kind: "showBible", passage, versions, layout, target }),
   stageMessage: (text: string | null): Command => ({ kind: "stageMessage", text }),
   serviceMode: (on: boolean): Command => ({ kind: "serviceMode", on }),
 } as const;

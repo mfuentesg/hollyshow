@@ -9,7 +9,26 @@ permissions:
   contents: write
 
 jobs:
+  # Fail fast, before any installer is built, on a tag that does not match the project version
+  # (e.g. v0.2.0 would otherwise publish 0.1.0 installers) or on a prerelease WiX rejects.
+  version:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tag matches the version files
+        run: node scripts/check-version.mjs ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+
+  # Quality gate: the same lint, type, test and generated-types checks as CI.
+  verify:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: [version, verify]
     strategy:
       fail-fast: false
       matrix:
@@ -21,6 +40,7 @@ jobs:
           - platform: ubuntu-22.04
             args: ""
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -42,10 +62,14 @@ jobs:
           # Universal macOS binary needs both architectures.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          # One cache per matrix leg: targets and profiles differ and must not evict each other.
+          key: release-${{ matrix.platform }}
 
       - run: pnpm install --frozen-lockfile
 
-      # Remote web app is built first; the Rust server embeds its dist/.
+      # The remote web app is built first; the Rust server embeds its dist/ (build.rs refuses a
+      # release build without it).
       - run: pnpm --filter remote build
 
       - uses: tauri-apps/tauri-action@v0
@@ -67,14 +91,20 @@ jobs:
           # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
-          tagName: ${{ github.ref_name == 'master' && format('v0.0.0-dev.{0}', github.run_number) || github.ref_name }}
-          releaseName: "HollyShow ${{ github.ref_name }}"
+          # pnpm-lock.yaml lives at the repo root, so auto-detection in projectPath would fall back
+          # to npm. Be explicit.
+          tauriScript: pnpm tauri
+          # A tag push uses the tag; a manual run uses the version from the project files.
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v__VERSION__' }}
+          releaseName: "HollyShow v__VERSION__"
           releaseBody: "Instaladores sin firmar. Consulta docs/ARCHITECTURE.md para el estado de la firma."
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
+      # Also on failure, so a broken leg still leaves whatever it bundled for inspection.
       - name: Upload bundles as workflow artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hollyshow-${{ matrix.platform }}

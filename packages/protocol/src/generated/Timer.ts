@@ -4,7 +4,8 @@ import type { TimerKind } from "./TimerKind";
 import type { TimerRun } from "./TimerRun";
 
 /**
- * Wall clock is injected by the host (`at_ms` in commands) so the reducer stays pure.
+ * Timestamps come from the host clock (`Ctx::now_ms`), never from clients, so every viewer
+ * computes the same remaining time.
  */
 export type Timer = { id: TimerId, label: string, kind: TimerKind, 
 /**

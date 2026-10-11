@@ -12,13 +12,4 @@ pub enum StorageError {
     Backend(String),
 }
 
-impl From<rusqlite::Error> for StorageError {
-    fn from(e: rusqlite::Error) -> Self {
-        match e {
-            rusqlite::Error::QueryReturnedNoRows => Self::NotFound("row".into()),
-            other => Self::Backend(other.to_string()),
-        }
-    }
-}
-
 pub type StorageResult<T> = Result<T, StorageError>;

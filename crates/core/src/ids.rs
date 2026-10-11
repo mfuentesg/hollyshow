@@ -88,3 +88,12 @@ id_type!(
     /// Identifier of a paired remote device.
     DeviceId
 );
+id_type!(
+    /// Identifier of a query (request/response correlation on the WebSocket).
+    QueryId
+);
+id_type!(
+    /// Server-assigned identifier of one client connection. Command ids are only unique per
+    /// session, so idempotency is keyed on `(SessionId, CommandId)`.
+    SessionId
+);

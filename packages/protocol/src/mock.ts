@@ -98,6 +98,9 @@ export function createMockApi(seed: MockSeed = {}): HollyApi & {
         case "listThemes":
           res = { kind: "themes", items: seed.themes ?? [] };
           break;
+        case "unknown":
+          res = { kind: "unknown" };
+          break;
       }
       return res as QueryResult<Q>;
     },

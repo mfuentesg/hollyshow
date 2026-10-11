@@ -11,6 +11,8 @@
     "dev:web": "pnpm --filter desktop dev",
     "dev:remote": "pnpm --filter remote dev",
     "build": "pnpm --filter remote build && pnpm --filter desktop tauri build",
+    "bootstrap": "pnpm install && pnpm build:web",
+    "check:version": "node scripts/check-version.mjs",
     "build:web": "pnpm -r --filter './apps/*' build",
     "lint": "eslint . && prettier --check . ",
     "format": "prettier --write .",

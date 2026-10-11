@@ -1,0 +1,15 @@
+[package]
+name = "hollyshow-storage-sqlite"
+description = "SQLite (rusqlite bundled, FTS5) implementation of the hollyshow-storage-api traits"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hollyshow-core.workspace = true
+hollyshow-storage-api.workspace = true
+rusqlite.workspace = true
