@@ -1,0 +1,106 @@
+{
+  "result_count": 6,
+  "page_count": 3,
+  "page_size": 20,
+  "page": 1,
+  "results": [
+    {
+      "id": "ov-1",
+      "title": "Wooden cross",
+      "foreign_landing_url": "https://www.flickr.com/photos/jane/1",
+      "url": "https://live.staticflickr.com/1/cross.jpg",
+      "creator": "Jane Doe",
+      "creator_url": "https://example.org/jane",
+      "license": "by",
+      "license_version": "2.0",
+      "license_url": "https://creativecommons.org/licenses/by/2.0/",
+      "provider": "flickr",
+      "source": "flickr",
+      "attribution": "\"Wooden cross\" by Jane Doe is licensed under CC BY 2.0.",
+      "thumbnail": "https://api.openverse.org/v1/images/ov-1/thumb/",
+      "mature": false,
+      "width": 3000,
+      "height": 2000
+    },
+    {
+      "id": "ov-2",
+      "title": "Sunrise cross",
+      "foreign_landing_url": "https://example.org/2",
+      "url": "https://example.org/2/full.jpg",
+      "creator": null,
+      "creator_url": null,
+      "license": "cc0",
+      "license_version": "1.0",
+      "license_url": null,
+      "attribution": null,
+      "thumbnail": "https://api.openverse.org/v1/images/ov-2/thumb/",
+      "mature": false,
+      "width": 4000,
+      "height": 2250
+    },
+    {
+      "id": "ov-nc",
+      "title": "Non commercial",
+      "foreign_landing_url": "https://example.org/nc",
+      "url": "https://example.org/nc/full.jpg",
+      "creator": "Someone",
+      "license": "by-nc",
+      "license_version": "4.0",
+      "mature": false,
+      "width": 3000,
+      "height": 2000
+    },
+    {
+      "id": "ov-mature",
+      "title": "Mature",
+      "url": "https://example.org/mature.jpg",
+      "license": "by",
+      "license_version": "4.0",
+      "mature": true,
+      "width": 3000,
+      "height": 2000
+    },
+    {
+      "id": "ov-narrow",
+      "title": "Too narrow",
+      "url": "https://example.org/narrow.jpg",
+      "license": "by",
+      "license_version": "4.0",
+      "mature": false,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "id": "ov-portrait",
+      "title": "Portrait",
+      "url": "https://example.org/portrait.jpg",
+      "license": "by",
+      "license_version": "4.0",
+      "mature": false,
+      "width": 2000,
+      "height": 3000
+    },
+    {
+      "id": "ov-nourl",
+      "title": "No url",
+      "url": null,
+      "license": "by",
+      "license_version": "4.0",
+      "mature": false,
+      "width": 3000,
+      "height": 2000
+    },
+    {
+      "id": "ov-unknown-size",
+      "title": "Unknown size",
+      "foreign_landing_url": "https://example.org/u",
+      "url": "https://example.org/u/full.jpg",
+      "creator": "Pat",
+      "license": "by-sa",
+      "license_version": "4.0",
+      "mature": false,
+      "width": null,
+      "height": null
+    }
+  ]
+}

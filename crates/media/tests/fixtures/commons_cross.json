@@ -1,0 +1,88 @@
+{
+  "batchcomplete": true,
+  "continue": { "gsroffset": 20, "continue": "gsroffset||" },
+  "query": {
+    "pages": [
+      {
+        "pageid": 222,
+        "ns": 6,
+        "title": "File:Stained glass_window.jpg",
+        "index": 2,
+        "imageinfo": [
+          {
+            "thumburl": "https://upload.wikimedia.org/thumb/222/640px-Stained.jpg",
+            "thumbwidth": 640,
+            "thumbheight": 360,
+            "url": "https://upload.wikimedia.org/222/Stained.jpg",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Stained_glass_window.jpg",
+            "width": 4000,
+            "height": 2250,
+            "mime": "image/jpeg",
+            "extmetadata": {
+              "LicenseShortName": { "value": "CC BY-SA 4.0" },
+              "LicenseUrl": { "value": "https://creativecommons.org/licenses/by-sa/4.0" },
+              "Artist": { "value": "<a href=\"//commons.wikimedia.org/wiki/User:Maria\" title=\"User:Maria\">Mar&#237;a</a> &amp; <b>Co</b>" },
+              "Attribution": { "value": "Photo: Maria &amp; Co / CC BY-SA 4.0" }
+            }
+          }
+        ]
+      },
+      {
+        "pageid": 111,
+        "ns": 6,
+        "title": "File:Pantocrator_icon.jpg",
+        "index": 1,
+        "imageinfo": [
+          {
+            "thumburl": "https://upload.wikimedia.org/thumb/111/640px-Pantocrator.jpg",
+            "url": "https://upload.wikimedia.org/111/Pantocrator.jpg",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Pantocrator_icon.jpg",
+            "width": 2400,
+            "height": 1600,
+            "mime": "image/jpeg",
+            "extmetadata": {
+              "LicenseShortName": { "value": "Public domain" },
+              "Artist": { "value": "Unknown iconographer" }
+            }
+          }
+        ]
+      },
+      {
+        "pageid": 333,
+        "ns": 6,
+        "title": "File:Narrow.jpg",
+        "index": 3,
+        "imageinfo": [
+          { "thumburl": "https://upload.wikimedia.org/t.jpg", "url": "https://upload.wikimedia.org/n.jpg", "descriptionurl": "https://commons.wikimedia.org/wiki/File:Narrow.jpg", "width": 1200, "height": 800, "mime": "image/jpeg",
+            "extmetadata": { "LicenseShortName": { "value": "CC0" } } }
+        ]
+      },
+      {
+        "pageid": 444,
+        "ns": 6,
+        "title": "File:Diagram.svg",
+        "index": 4,
+        "imageinfo": [
+          { "thumburl": "https://upload.wikimedia.org/t.png", "url": "https://upload.wikimedia.org/d.svg", "descriptionurl": "https://commons.wikimedia.org/wiki/File:Diagram.svg", "width": 5000, "height": 3000, "mime": "image/svg+xml",
+            "extmetadata": { "LicenseShortName": { "value": "CC0" } } }
+        ]
+      },
+      {
+        "pageid": 555,
+        "ns": 6,
+        "title": "File:Nc_photo.jpg",
+        "index": 5,
+        "imageinfo": [
+          { "thumburl": "https://upload.wikimedia.org/t.jpg", "url": "https://upload.wikimedia.org/nc.jpg", "descriptionurl": "https://commons.wikimedia.org/wiki/File:Nc_photo.jpg", "width": 3000, "height": 2000, "mime": "image/jpeg",
+            "extmetadata": { "LicenseShortName": { "value": "CC BY-NC 4.0" } } }
+        ]
+      },
+      {
+        "pageid": 666,
+        "ns": 6,
+        "title": "File:No_info.jpg",
+        "index": 6
+      }
+    ]
+  }
+}

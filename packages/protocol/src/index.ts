@@ -1,5 +1,7 @@
 export * from "./generated";
 export * from "./api";
+export * from "./media";
+export { createMockMedia } from "./mediaMock";
 export { commands } from "./commands";
 export { createMockApi } from "./mock";
 export type { MockSeed } from "./mock";

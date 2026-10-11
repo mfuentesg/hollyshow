@@ -9,6 +9,7 @@ members = [
   "crates/bible",
   "crates/app",
   "crates/server",
+  "crates/media",
   "apps/desktop/src-tauri",
 ]
 
@@ -43,6 +44,7 @@ hollyshow-app = { path = "crates/app" }
 hollyshow-songs = { path = "crates/songs" }
 hollyshow-bible = { path = "crates/bible" }
 hollyshow-server = { path = "crates/server" }
+hollyshow-media = { path = "crates/media" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

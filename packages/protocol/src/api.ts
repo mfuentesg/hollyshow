@@ -7,6 +7,7 @@ import type {
   QueryResponse,
   StateView,
 } from "./generated";
+import type { MediaApi } from "./media";
 
 export type Unsubscribe = () => void;
 
@@ -45,7 +46,7 @@ export type ConnectionStatus = "connecting" | "open" | "reconnecting" | "closed"
  *  - `websocket` (apps/remote)   ClientMsg/ServerMsg over WS with reconnection and resync
  *  - `mock`      (this package)  in-memory, for UI development and tests
  */
-export interface HollyApi {
+export interface HollyApi extends Partial<MediaApi> {
   readonly transport: "tauri" | "websocket" | "mock";
 
   /** Sends a command. Resolves with the server verdict; rejects only on transport failure. */

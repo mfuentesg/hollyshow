@@ -10,6 +10,7 @@ import type {
   Song,
   Theme,
 } from "./generated";
+import { createMockMedia } from "./mediaMock";
 import { mockApply } from "./reducer";
 
 export interface MockSeed {
@@ -34,6 +35,7 @@ export function createMockApi(seed: MockSeed = {}): HollyApi & {
   const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
   return {
+    ...createMockMedia(),
     transport: "mock",
     get state() {
       return state;
