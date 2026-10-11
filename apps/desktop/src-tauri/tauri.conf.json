@@ -29,7 +29,14 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app", "nsis", "msi", "deb", "appimage"],
+    "targets": [
+      "dmg",
+      "app",
+      "nsis",
+      "msi",
+      "deb",
+      "appimage"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,11 +48,48 @@
     "shortDescription": "Presentaciones para la iglesia con control remoto por red local",
     "longDescription": "HollyShow proyecta letras, versículos y medios en el culto, con control remoto desde el celular en la red local.",
     "copyright": "HollyShow contributors",
-    "macOS": { "minimumSystemVersion": "12.0" },
-    "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" },
-      "nsis": { "installMode": "both" }
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": true
     },
-    "linux": { "deb": { "depends": [] } }
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installMode": "both",
+        "languages": [
+          "Spanish",
+          "English"
+        ],
+        "displayLanguageSelector": true
+      },
+      "wix": {
+        "language": [
+          "es-ES",
+          "en-US"
+        ]
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBBMTc4RkIzRjVGNzFDQzAKUldUQUhQZjFzNDhYQ2dyMEJEZTVKdC9vVmFzM0loYVlxNXZ5amo1UFBhaGJHSWorMXBwaHB4UjcK",
+      "endpoints": [
+        "https://github.com/mfuentesg/hollyshow/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
