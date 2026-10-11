@@ -1,0 +1,93 @@
+/* Auto update UI. Tokens only (--hs-*). */
+.upd-footer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hs-text-secondary);
+}
+.upd-footer--link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--hs-amber-text);
+  cursor: pointer;
+}
+.upd-footer--link:focus-visible {
+  outline: 2px solid var(--hs-amber);
+  outline-offset: 2px;
+}
+.upd-progress {
+  width: 96px;
+  height: 6px;
+  accent-color: var(--hs-amber);
+}
+.upd-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: var(--hs-radius-md);
+  background: var(--hs-elevated);
+  border: 1px solid var(--hs-amber);
+  font-size: 14px;
+}
+.upd-banner__text {
+  flex: 1 1 240px;
+}
+.upd-error {
+  color: var(--hs-danger-text);
+}
+.upd-notes {
+  max-height: 55vh;
+  overflow: auto;
+}
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 16px 0 6px;
+}
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md pre {
+  margin: 0 0 10px;
+}
+.md ul,
+.md ol {
+  padding-left: 22px;
+}
+.md code {
+  font-family: var(--hs-font-mono);
+  font-size: 0.9em;
+  background: var(--hs-chrome);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.md pre {
+  background: var(--hs-chrome);
+  padding: 10px 12px;
+  border-radius: var(--hs-radius-sm);
+  overflow: auto;
+}
+.md pre code {
+  background: none;
+  padding: 0;
+}
+.md blockquote {
+  border-left: 3px solid var(--hs-border-strong);
+  padding-left: 12px;
+  color: var(--hs-text-secondary);
+}
+.md a {
+  color: var(--hs-preview-text);
+}

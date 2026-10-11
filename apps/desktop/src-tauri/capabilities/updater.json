@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "updater",
+  "description": "Auto update: check, download and restart (operator window only)",
+  "windows": ["main"],
+  "permissions": ["updater:default", "process:allow-restart"]
+}
