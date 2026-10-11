@@ -184,6 +184,25 @@ Diseño:
 - Las peticiones salen desde Rust (no desde el WebView): caché de resultados, respeto de límites (HTTP 429 → reintento con espera), User-Agent identificable, sin scraping.
 - Moderación: activar `mature=false` / filtros de contenido sensible de cada API; el operador previsualiza antes de descargar.
 
+#### E3. Actualización automática (estilo VS Code)
+
+Basada en `tauri-plugin-updater` + **GitHub Releases** del repo `mfuentesg/hollyshow`: cada tag `vX.Y.Z` dispara el workflow de release, que firma los paquetes y publica `latest.json` (manifiesto con versión, notas y URL+firma por plataforma).
+
+Flujo para el usuario:
+1. Al iniciar y luego cada 6 h, la app consulta `https://github.com/mfuentesg/hollyshow/releases/latest/download/latest.json` en segundo plano.
+2. Si hay versión nueva, **la descarga en segundo plano** (barra de progreso discreta en el pie de la ventana).
+3. Al terminar muestra un aviso no intrusivo: **"HollyShow 0.2.0 está lista · Reiniciar y actualizar · Ver novedades · Más tarde"**. "Ver novedades" abre una ventana con las notas del release (Markdown del tag).
+4. **Nunca durante un culto**: si el modo culto está activo o hay una salida en vivo, el aviso se pospone y la actualización se aplica **al cerrar la app** ("Se instalará al salir").
+5. Menú "Ayuda → Buscar actualizaciones…" para comprobar manualmente.
+
+Detalles:
+- **Firma obligatoria** de las actualizaciones (clave Ed25519 de Tauri): la clave pública va en `tauri.conf.json`, la privada sólo como secreto de GitHub (`TAURI_SIGNING_PRIVATE_KEY` + contraseña). Sin firma válida la app rechaza la actualización.
+- **Canales**: estable (tags `vX.Y.Z`) y beta (prereleases `vX.Y.Z-beta.N`, manifiesto propio), seleccionable en Ajustes.
+- Ajustes: activar/desactivar búsqueda automática, descarga automática sí/no.
+- Plataformas: macOS (.app.tar.gz), Windows (instalador NSIS en modo pasivo), Linux sólo AppImage (los .deb se actualizan con el gestor de paquetes).
+- Requiere que los releases sean públicos (repo público) o un endpoint propio.
+- Es independiente de la firma de código de Apple/Windows (esa evita las advertencias del sistema; la del updater garantiza que la actualización viene de nosotros).
+
 #### F. Experiencia moderna
 
 - **Paleta de comandos** (Cmd/Ctrl+K) para todo: buscar canción, versículo, ejecutar acciones.
