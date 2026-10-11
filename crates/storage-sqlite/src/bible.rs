@@ -62,20 +62,52 @@ fn exists(conn: &Connection, code: &VersionCode) -> StorageResult<bool> {
     .map_err(map_err)
 }
 
+/// Verses per transaction when installing a Bible.
+const INSTALL_BATCH: usize = 2000;
+
 /// Replaces the installed copy of `version` (metadata and verses) inside `conn`'s transaction.
 pub(crate) fn install(
     conn: &Connection,
     version: &BibleVersion,
     verses: &[Verse],
 ) -> StorageResult<()> {
+    install_header(conn, version)?;
+    install_verses(conn, version, verses)?;
+    finish_install(conn, version)
+}
+
+/// Step 1: drops the old copy and inserts the version row, disabled until the last step so a
+/// partially installed version is never offered.
+fn install_header(conn: &Connection, version: &BibleVersion) -> StorageResult<()> {
     if version.code.0.trim().is_empty() {
         return Err(StorageError::Invalid("bible version code is empty".into()));
     }
     remove(conn, &version.code)?;
+    conn.execute(
+        "INSERT INTO bibles (code, name, language, license, copyright_text, is_public_domain,
+                             versification, sort_order, is_enabled, is_default, is_secondary)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0, 0)",
+        params![
+            version.code.0,
+            version.name,
+            version.language,
+            version.license,
+            version.copyright_text,
+            version.is_public_domain,
+            version.versification,
+            version.sort_order,
+        ],
+    )
+    .map_err(map_err)?;
+    Ok(())
+}
+
+/// Step 3: applies enabled/default/secondary exclusivity and enables the version.
+fn finish_install(conn: &Connection, version: &BibleVersion) -> StorageResult<()> {
     let has_default: bool = conn
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM bibles WHERE is_default = 1)",
-            [],
+            "SELECT EXISTS(SELECT 1 FROM bibles WHERE is_default = 1 AND code <> ?1)",
+            [&version.code.0],
             |r| r.get(0),
         )
         .map_err(map_err)?;
@@ -90,24 +122,24 @@ pub(crate) fn install(
             .map_err(map_err)?;
     }
     conn.execute(
-        "INSERT INTO bibles (code, name, language, license, copyright_text, is_public_domain,
-                             versification, sort_order, is_enabled, is_default, is_secondary)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "UPDATE bibles SET is_enabled = ?2, is_default = ?3, is_secondary = ?4 WHERE code = ?1",
         params![
             version.code.0,
-            version.name,
-            version.language,
-            version.license,
-            version.copyright_text,
-            version.is_public_domain,
-            version.versification,
-            version.sort_order,
             version.is_enabled,
             make_default,
-            version.is_secondary && !make_default,
+            version.is_secondary && !make_default
         ],
     )
     .map_err(map_err)?;
+    Ok(())
+}
+
+/// Step 2 (repeatable): inserts a batch of verses.
+fn install_verses(
+    conn: &Connection,
+    version: &BibleVersion,
+    verses: &[Verse],
+) -> StorageResult<()> {
     let mut ins = conn
         .prepare_cached(
             "INSERT INTO bible_verses (version, book, chapter, verse, text, markup)
@@ -192,11 +224,30 @@ impl Store {
     /// `verses` must be in canonical order (Genesis to Revelation): the insertion order defines
     /// how passages that span chapters or books are resolved. The first version installed becomes
     /// the default; `is_default`/`is_secondary` on `version` keep their exclusivity.
+    ///
+    /// The ~31k verses go in batches of [`INSTALL_BATCH`], each in its own short transaction that
+    /// releases the connection lock in between, so queries and command acks are not stalled for
+    /// the whole install. The version stays disabled (hidden) until the last batch commits; a
+    /// crash mid-way leaves a hidden partial copy that a reinstall replaces.
     pub fn install_bible(&self, version: &BibleVersion, verses: &[Verse]) -> StorageResult<()> {
-        let mut conn = self.lock();
-        let tx = conn.transaction().map_err(map_err)?;
-        install(&tx, version, verses)?;
-        tx.commit().map_err(map_err)
+        let step = |f: &dyn Fn(&Connection) -> StorageResult<()>| -> StorageResult<()> {
+            let mut conn = self.lock();
+            let tx = conn.transaction().map_err(map_err)?;
+            f(&tx)?;
+            tx.commit().map_err(map_err)
+        };
+        step(&|c| install_header(c, version))?;
+        let run = || -> StorageResult<()> {
+            for chunk in verses.chunks(INSTALL_BATCH) {
+                step(&|c| install_verses(c, version, chunk))?;
+                std::thread::yield_now();
+            }
+            step(&|c| finish_install(c, version))
+        };
+        run().inspect_err(|_| {
+            // Do not leave a half-installed copy behind.
+            let _ = step(&|c| remove(c, &version.code));
+        })
     }
 
     /// Sets the presentation order of the installed versions: `codes[0]` first. Versions not
@@ -232,7 +283,7 @@ impl Store {
 
     /// Number of verses stored for a version.
     pub fn verse_count(&self, code: &VersionCode) -> StorageResult<u32> {
-        self.lock()
+        self.read()
             .query_row(
                 "SELECT count(*) FROM bible_verses WHERE version = ?1",
                 [&code.0],
@@ -244,11 +295,11 @@ impl Store {
 
 impl BibleRepo for Store {
     fn list_versions(&self) -> StorageResult<Vec<BibleVersion>> {
-        all_versions(&self.lock())
+        all_versions(&self.read())
     }
 
     fn get_version(&self, code: &VersionCode) -> StorageResult<Option<BibleVersion>> {
-        self.lock()
+        self.read()
             .query_row(
                 &format!("SELECT {VERSION_COLS} FROM bibles WHERE code = ?1"),
                 [&code.0],
@@ -320,7 +371,7 @@ impl BibleRepo for Store {
     }
 
     fn passage(&self, version: &VersionCode, passage: &Passage) -> StorageResult<Vec<Verse>> {
-        let conn = self.lock();
+        let conn = self.read();
         let (s, e) = (&passage.start, &passage.end);
         // Resolve both ends to row ids, then read the contiguous range: this is canonical across
         // chapters and books because ids follow installation order. A missing boundary verse
@@ -370,7 +421,7 @@ impl BibleRepo for Store {
         let Some(query) = fts_query(text) else {
             return Ok(vec![]);
         };
-        let conn = self.lock();
+        let conn = self.read();
         let mut st = conn
             .prepare_cached(
                 "SELECT v.version, v.book, v.chapter, v.verse, v.text

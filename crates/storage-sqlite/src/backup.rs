@@ -1,4 +1,9 @@
-//! Backups: consistent snapshots with `VACUUM INTO`, daily rotation and restore.
+//! Backups: consistent snapshots with `VACUUM INTO` on a dedicated read-only connection (the
+//! writer mutex is never held while a backup runs), a daily set plus a small rolling set of
+//! timestamped snapshots, and restore.
+//!
+//! Timestamps in file names come from the `local_ms` argument: wall-clock milliseconds already
+//! shifted by the user's UTC offset, so an evening service never rolls to "tomorrow".
 
 use crate::{map_err, Store};
 use hollyshow_storage_api::{StorageError, StorageResult};
@@ -54,31 +59,90 @@ pub(crate) fn utc_date(ms: i64) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackupInfo {
     pub path: PathBuf,
-    /// `YYYY-MM-DD` taken from the file name.
+    /// `YYYY-MM-DD` (daily) or `YYYY-MM-DDTHHMMSS` (snapshot) taken from the file name.
     pub date: String,
     pub size_bytes: u64,
 }
 
+impl BackupInfo {
+    /// Whether this is a timestamped snapshot rather than the daily backup.
+    pub fn is_snapshot(&self) -> bool {
+        self.date.len() > 10
+    }
+}
+
+/// `YYYY-MM-DDTHHMMSS` of a (local) wall-clock millisecond timestamp.
+pub(crate) fn local_stamp(ms: i64) -> String {
+    let secs = ms.div_euclid(1000).rem_euclid(86_400);
+    format!(
+        "{}T{:02}{:02}{:02}",
+        utc_date(ms),
+        secs / 3600,
+        secs % 3600 / 60,
+        secs % 60
+    )
+}
+
 fn parse_name(name: &str) -> Option<&str> {
     let date = name.strip_prefix(PREFIX)?.strip_suffix(SUFFIX)?;
-    let ok = date.len() == 10
-        && date.char_indices().all(|(i, c)| {
-            if i == 4 || i == 7 {
-                c == '-'
-            } else {
-                c.is_ascii_digit()
-            }
+    let ok = (date.len() == 10 || date.len() == 17)
+        && date.char_indices().all(|(i, c)| match i {
+            4 | 7 => c == '-',
+            10 => c == 'T',
+            _ => c.is_ascii_digit(),
         });
     ok.then_some(date)
 }
 
 impl Store {
-    /// Writes a snapshot of the database to `dest` (must not exist).
+    /// Writes a snapshot of the database to `dest` (must not exist). File-backed stores use their
+    /// own read-only connection (WAL: a consistent view without blocking the writer or queries).
     pub fn backup_to(&self, dest: impl AsRef<Path>) -> StorageResult<()> {
-        vacuum_into(&self.lock(), dest.as_ref())
+        match &self.path {
+            Some(path) => {
+                let conn = Connection::open_with_flags(
+                    path,
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                        | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                )
+                .map_err(map_err)?;
+                conn.busy_timeout(std::time::Duration::from_secs(10))
+                    .map_err(map_err)?;
+                vacuum_into(&conn, dest.as_ref())
+            }
+            None => vacuum_into(&self.lock(), dest.as_ref()),
+        }
     }
 
-    /// Creates today's backup in `dir` unless one exists, then keeps only the newest `keep`.
+    /// Writes a timestamped snapshot (`hollyshow-YYYY-MM-DDTHHMMSS.db`) in `dir` and keeps only
+    /// the newest `keep` snapshots. Meant to run when the library changed (debounced) and on a
+    /// clean exit. Returns `None` when a snapshot with the same second already exists.
+    pub fn snapshot_backup(
+        &self,
+        dir: impl AsRef<Path>,
+        keep: usize,
+        local_ms: i64,
+    ) -> StorageResult<Option<PathBuf>> {
+        let dir = dir.as_ref();
+        std::fs::create_dir_all(dir).map_err(|e| io("create backup dir", e))?;
+        let path = dir.join(format!("{PREFIX}{}{SUFFIX}", local_stamp(local_ms)));
+        let created = if path.exists() {
+            None
+        } else {
+            self.backup_to(&path)?;
+            Some(path)
+        };
+        let snaps: Vec<_> = list_backups(dir)?
+            .into_iter()
+            .filter(BackupInfo::is_snapshot)
+            .collect();
+        for old in snaps.iter().skip(keep.max(1)) {
+            std::fs::remove_file(&old.path).map_err(|e| io("remove old snapshot", e))?;
+        }
+        Ok(created)
+    }
+
+    /// Creates the backup of the day (`now_ms` as in the module docs) in `dir` unless one exists, then keeps only the newest `keep`.
     /// Returns the new file, or `None` when today's backup was already there. Call at startup
     /// and, for long-running sessions, once an hour; it is cheap when nothing is to be done.
     pub fn daily_backup(
@@ -97,7 +161,10 @@ impl Store {
             Some(path)
         };
         // Rotation also runs when nothing was created, so lowering `keep` takes effect.
-        let all = list_backups(dir)?;
+        let all: Vec<_> = list_backups(dir)?
+            .into_iter()
+            .filter(|b| !b.is_snapshot())
+            .collect();
         for old in all.iter().skip(keep.max(1)) {
             std::fs::remove_file(&old.path).map_err(|e| io("remove old backup", e))?;
         }
@@ -236,6 +303,54 @@ mod tests {
     }
 
     #[test]
+    fn snapshots_are_timestamped_rotate_and_do_not_touch_dailies() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Store::open(dir.path().join("lib.db")).unwrap();
+        db.save(&song("a")).unwrap();
+        let backups = dir.path().join("backups");
+        let t0 = 1_760_227_200_000 + (21 * 3600 + 5 * 60 + 9) * 1000; // 21:05:09
+        db.daily_backup(&backups, 2, t0).unwrap();
+        for i in 0..4 {
+            assert!(db
+                .snapshot_backup(&backups, 2, t0 + i * 60_000)
+                .unwrap()
+                .is_some());
+        }
+        assert!(db
+            .snapshot_backup(&backups, 2, t0 + 3 * 60_000)
+            .unwrap()
+            .is_none());
+        let all = db.list_backups(&backups).unwrap();
+        let names: Vec<_> = all.iter().map(|b| b.date.as_str()).collect();
+        assert_eq!(
+            names,
+            ["2025-10-12T210809", "2025-10-12T210709", "2025-10-12"]
+        );
+        assert!(all[0].is_snapshot() && !all[2].is_snapshot());
+        // The snapshot restores like any backup.
+        let out = dir.path().join("restored.db");
+        restore_backup(&all[0].path, &out).unwrap();
+        assert_eq!(Store::open(&out).unwrap().song_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn backup_does_not_hold_the_writer_lock_and_change_marker_tracks_commits() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Store::open(dir.path().join("lib.db")).unwrap();
+        db.save(&song("a")).unwrap();
+        let m0 = db.change_marker();
+        assert_eq!(db.change_marker(), m0);
+        let guard = db.lock(); // a long write in progress on the main connection
+        db.backup_to(dir.path().join("b.db")).unwrap();
+        drop(guard);
+        db.save(&song("b")).unwrap();
+        assert_ne!(db.change_marker(), m0);
+        let restored = dir.path().join("r.db");
+        restore_backup(dir.path().join("b.db"), &restored).unwrap();
+        assert_eq!(Store::open(&restored).unwrap().song_count().unwrap(), 1);
+    }
+
+    #[test]
     fn restore_brings_data_back() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("lib.db");
@@ -264,6 +379,11 @@ mod tests {
     #[test]
     fn file_name_parsing() {
         assert_eq!(parse_name("hollyshow-2026-01-02.db"), Some("2026-01-02"));
+        assert_eq!(
+            parse_name("hollyshow-2026-01-02T213045.db"),
+            Some("2026-01-02T213045")
+        );
+        assert_eq!(parse_name("hollyshow-2026-01-02x213045.db"), None);
         assert_eq!(parse_name("hollyshow-2026-01-02.db.tmp"), None);
         assert_eq!(parse_name("other.db"), None);
     }

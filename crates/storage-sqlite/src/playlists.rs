@@ -30,12 +30,12 @@ pub(crate) fn all_themes(conn: &Connection) -> StorageResult<Vec<Theme>> {
 
 impl ThemeRepo for Store {
     fn list(&self) -> StorageResult<Vec<Theme>> {
-        all_themes(&self.lock())
+        all_themes(&self.read())
     }
 
     fn get(&self, id: &ThemeId) -> StorageResult<Option<Theme>> {
         let json: Option<String> = self
-            .lock()
+            .read()
             .query_row(
                 "SELECT json FROM themes WHERE id = ?1",
                 [id.as_str()],
@@ -122,7 +122,7 @@ pub(crate) fn all_playlist_ids(conn: &Connection) -> StorageResult<Vec<String>> 
 impl PlaylistRepo for Store {
     /// Dated services newest first, then undated ones; templates are flagged, not segregated.
     fn list(&self) -> StorageResult<Vec<PlaylistSummary>> {
-        let conn = self.lock();
+        let conn = self.read();
         let mut st = conn
             .prepare_cached(
                 "SELECT id, name, date, json_array_length(items), is_template FROM playlists
@@ -146,7 +146,7 @@ impl PlaylistRepo for Store {
     }
 
     fn get(&self, id: &PlaylistId) -> StorageResult<Option<Playlist>> {
-        load_playlist(&self.lock(), id.as_str())
+        load_playlist(&self.read(), id.as_str())
     }
 
     fn save(&self, playlist: &Playlist) -> StorageResult<()> {
@@ -185,7 +185,7 @@ pub(crate) fn set_setting(conn: &Connection, key: &str, value: &str) -> StorageR
 
 impl SettingsRepo for Store {
     fn get(&self, key: &str) -> StorageResult<Option<String>> {
-        self.lock()
+        self.read()
             .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
                 r.get(0)
             })

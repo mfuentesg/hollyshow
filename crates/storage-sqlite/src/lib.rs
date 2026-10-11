@@ -4,7 +4,7 @@
 //! * [`Store`] owns one WAL-mode connection behind a mutex and implements every repository trait.
 //! * Schema: versioned migrations (`migrations`), PLAN §6 tables, accent/case-insensitive FTS5
 //!   for songs and Bible verses.
-//! * Extras beyond the traits: paired devices, the CCLI usage report, Bible installation
+//! * Extras beyond the traits: the CCLI usage report, Bible installation
 //!   ([`Store::install_bible`]), JSON library export/import and rotating daily backups.
 //!
 //! All methods are blocking; async callers use `tokio::task::spawn_blocking`.
@@ -13,21 +13,19 @@ mod backup;
 mod bible;
 #[cfg(test)]
 mod contract_tests;
-mod devices;
 mod library;
 pub mod migrations;
 mod playlists;
 mod songs;
 
 pub use backup::{list_backup_files, restore_backup, BackupInfo};
-pub use devices::DeviceRecord;
 pub use library::{BibleExport, ImportMode, ImportReport, Library, LibraryOptions, UsageEntry};
 pub use songs::UsageRow;
 
 use hollyshow_storage_api::{Repos, StorageError, StorageResult};
 use rusqlite::{Connection, ErrorCode};
 use serde::{de::DeserializeOwned, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Maps a rusqlite error into the backend-agnostic [`StorageError`].
@@ -53,7 +51,13 @@ pub(crate) fn from_json<T: DeserializeOwned>(s: &str) -> StorageResult<T> {
 
 /// SQLite-backed store. Cheap to share: wrap in `Arc` and use [`Store::repos`].
 pub struct Store {
+    /// The single writer (and the only connection of in-memory stores).
     conn: Mutex<Connection>,
+    /// Read-only connection on the same file: queries and `passage()` lookups never wait for a
+    /// write, and WAL lets them run while the writer works. `None` for in-memory stores.
+    reader: Option<Mutex<Connection>>,
+    /// Database file; backups open their own connection on it instead of holding `conn`.
+    path: Option<PathBuf>,
 }
 
 impl Store {
@@ -78,8 +82,18 @@ impl Store {
             }
         }
         migrations::migrate(&mut conn)?;
+        let reader = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(map_err)?;
+        reader
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(map_err)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            reader: Some(Mutex::new(reader)),
+            path: Some(path.to_path_buf()),
         })
     }
 
@@ -90,6 +104,8 @@ impl Store {
         migrations::migrate(&mut conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            reader: None,
+            path: None,
         })
     }
 
@@ -122,6 +138,26 @@ impl Store {
         self.conn.lock().unwrap_or_else(|p| p.into_inner())
     }
 
+    /// Connection for read-only queries (the writer's for in-memory stores).
+    pub(crate) fn read(&self) -> MutexGuard<'_, Connection> {
+        match &self.reader {
+            Some(r) => r.lock().unwrap_or_else(|p| p.into_inner()),
+            None => self.lock(),
+        }
+    }
+
+    /// Opaque marker that changes whenever the database content changed since the last call
+    /// (any commit). Used to take backups only when there is something new to protect.
+    pub fn change_marker(&self) -> i64 {
+        let conn = self.read();
+        match &self.reader {
+            Some(_) => conn
+                .query_row("PRAGMA data_version", [], |r| r.get(0))
+                .unwrap_or(0),
+            None => i64::try_from(conn.total_changes()).unwrap_or(0),
+        }
+    }
+
     /// Schema version of the open database.
     pub fn schema_version(&self) -> StorageResult<u32> {
         migrations::current_version(&self.lock())
@@ -129,7 +165,7 @@ impl Store {
 
     /// Runs SQLite's `PRAGMA integrity_check`; `Ok(())` when the database is sound.
     pub fn integrity_check(&self) -> StorageResult<()> {
-        let conn = self.lock();
+        let conn = self.read();
         let res: String = conn
             .query_row("PRAGMA integrity_check", [], |r| r.get(0))
             .map_err(map_err)?;

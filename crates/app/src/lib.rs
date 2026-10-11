@@ -16,6 +16,8 @@ mod query;
 mod service;
 mod session;
 mod show;
+mod usage;
+mod writer;
 
 pub use guard::install_panic_hook;
 pub use service::{AppService, ClientCtx};

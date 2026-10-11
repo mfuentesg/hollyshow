@@ -22,6 +22,8 @@ use std::sync::Arc;
 
 /// How many daily backups are kept.
 pub const BACKUPS_KEPT: usize = 14;
+/// Rolling timestamped snapshots kept besides the daily ones.
+pub const SNAPSHOTS_KEPT: usize = 5;
 /// Settings key set to `1` while the app runs and to `0` on a clean exit (crash detection).
 pub const RUNNING_KEY: &str = "session.running";
 /// Settings key written once the starter content was created, so deleting it sticks.
@@ -221,7 +223,7 @@ impl AppState {
             .map_err(|e| format!("no se pudo crear {}: {e}", paths.data_dir.display()))?;
         let now_ms = now_ms();
         let (store, recovery) = open_store(&paths, now_ms)?;
-        if let Err(e) = store.daily_backup(&paths.backups, BACKUPS_KEPT, now_ms) {
+        if let Err(e) = store.daily_backup(&paths.backups, BACKUPS_KEPT, local_now_ms()) {
             log::warn!("daily backup failed: {e}");
         }
         let repos = store.repos();
@@ -299,7 +301,48 @@ impl AppState {
     pub fn shutdown(&self) {
         self.app.flush_session();
         let _ = self.app.repos().settings.set(RUNNING_KEY, "0");
+        // Last safety net: a snapshot of exactly what the user closed the app with.
+        if let Err(e) =
+            self.store
+                .snapshot_backup(&self.paths.backups, SNAPSHOTS_KEPT, local_now_ms())
+        {
+            log::warn!("exit backup failed: {e}");
+        }
     }
+}
+
+/// Wall-clock milliseconds shifted by the local UTC offset, so backup file names carry the local
+/// date and time (an evening service must not roll over to "tomorrow" at UTC midnight).
+pub fn local_now_ms() -> i64 {
+    use chrono::Offset;
+    let offset = chrono::Local::now().offset().fix().local_minus_utc();
+    now_ms() + i64::from(offset) * 1000
+}
+
+/// Blocking jobs allowed at once. Keeps a burst of library work from filling the blocking pool
+/// and starving the jobs that must stay responsive (autosave, backups, show control).
+const BLOCKING_LIMIT: usize = 4;
+static BLOCKING_GATE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(BLOCKING_LIMIT);
+
+/// Runs blocking work (SQLite, files, `library_changed`) off the async workers, at most
+/// [`BLOCKING_LIMIT`] jobs at a time. Async commands must use this instead of calling the
+/// repositories inline.
+pub async fn blocking<T, F>(f: F) -> Result<T, WireError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let internal = |m: String| WireError {
+        code: "internal".into(),
+        message: m,
+    };
+    let _permit = BLOCKING_GATE
+        .acquire()
+        .await
+        .map_err(|e| internal(e.to_string()))?;
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| internal(e.to_string()))
 }
 
 pub fn now_ms() -> i64 {

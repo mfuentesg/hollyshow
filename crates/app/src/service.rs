@@ -4,6 +4,8 @@ use crate::guard::contain;
 use crate::query;
 use crate::session::RoleFeed;
 use crate::show::build_show;
+use crate::usage::UsageLogger;
+use crate::writer::SessionWriter;
 use hollyshow_bible::{build_bible_slide, VersionText};
 use hollyshow_core::{
     project, Ack, BibleVersion, Command, CommandId, CoreError, Cue, EngineCommand, Event, ItemId,
@@ -14,9 +16,11 @@ use hollyshow_engine::{Dispatched, Engine, Outcome};
 use hollyshow_songs::SlideSplitter;
 use hollyshow_storage_api::Repos;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+/// How long an explicit flush (exit, panic hook) waits for the writer thread.
+const FLUSH_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
 /// Setting key holding the persisted session (see [`SavedSession`]).
 const SESSION_KEY: &str = "session.v1";
 /// A parallel Bible slide with more columns than this is unreadable and a cheap way to spam.
@@ -64,6 +68,8 @@ struct HostState {
     /// opened. They never write back to the song library.
     live_edits: HashMap<(ItemId, u32), Slide>,
     last_saved: Option<String>,
+    /// Song items already counted in the usage log for the open service (one count per service).
+    usage_logged: HashSet<ItemId>,
 }
 
 pub struct AppService {
@@ -71,6 +77,8 @@ pub struct AppService {
     repos: Repos,
     splitter: Arc<dyn SlideSplitter>,
     host: Mutex<HostState>,
+    writer: SessionWriter,
+    usage: UsageLogger,
 }
 
 fn host_session() -> SessionId {
@@ -83,11 +91,15 @@ fn storage_to_core(e: &hollyshow_storage_api::StorageError) -> CoreError {
 
 impl AppService {
     pub fn new(repos: Repos, engine: Arc<Engine>, splitter: Arc<dyn SlideSplitter>) -> Self {
+        let writer = SessionWriter::spawn(repos.settings.clone(), SESSION_KEY);
+        let usage = UsageLogger::spawn(repos.clone());
         Self {
             engine,
             repos,
             splitter,
             host: Mutex::new(HostState::default()),
+            writer,
+            usage,
         }
     }
 
@@ -150,9 +162,26 @@ impl AppService {
             other => self.ack_from(self.engine.dispatch(session, id, other.into())),
         };
         if ack.ok && !ack.duplicate {
+            self.note_usage();
             self.persist();
         }
         ack
+    }
+
+    /// Counts the live song once per service for the CCLI report. Cheap and non-blocking: the
+    /// lookup and the insert happen on the usage thread.
+    fn note_usage(&self) {
+        let Some(item) = self.engine.view().live.and_then(|c| c.item_id) else {
+            return;
+        };
+        let mut host = self.host();
+        let Some(playlist) = host.active_playlist.clone() else {
+            return;
+        };
+        if host.usage_logged.insert(item.clone()) {
+            drop(host);
+            self.usage.submit(playlist, item);
+        }
     }
 
     fn ack_from(&self, d: Dispatched) -> Ack {
@@ -224,6 +253,7 @@ impl AppService {
             .ok_or_else(|| CoreError::Invalid(format!("unknown playlist {playlist}")))?;
         if host.active_playlist.as_ref() != Some(playlist) {
             host.live_edits.clear();
+            host.usage_logged.clear();
         }
         host.active_playlist = Some(playlist.clone());
         let out = self.load_playlist(&host, &pl);
@@ -427,6 +457,8 @@ impl AppService {
             Err(std::sync::TryLockError::WouldBlock) => return,
         };
         self.persist_locked(&mut host);
+        drop(host);
+        self.writer.drain(FLUSH_BUDGET);
     }
 
     /// Playlist currently loaded as the show, if any.
@@ -448,10 +480,9 @@ impl AppService {
         if host.last_saved.as_deref() == Some(json.as_str()) {
             return;
         }
-        match self.repos.settings.set(SESSION_KEY, &json) {
-            Ok(()) => host.last_saved = Some(json),
-            Err(e) => log::warn!("could not persist the session: {e}"),
-        }
+        // Handed to the writer thread: the ack of a command never waits for the database.
+        host.last_saved = Some(json.clone());
+        self.writer.submit(json);
     }
 }
 
@@ -573,6 +604,40 @@ mod tests {
             layout: ParallelLayout::Columns,
             target: Target::Live,
         }
+    }
+
+    #[test]
+    fn a_song_going_live_is_logged_once_per_service() {
+        let f = fixture();
+        assert!(
+            f.app
+                .dispatch(
+                    &op(),
+                    None,
+                    Command::SetActivePlaylist {
+                        id: PlaylistId::new("p1")
+                    }
+                )
+                .ok
+        );
+        let live = || Command::ShowItem {
+            item_id: ItemId::new("i1"),
+            target: Target::Live,
+        };
+        assert!(f.app.dispatch(&op(), None, live()).ok);
+        assert!(f.app.dispatch(&op(), None, live()).ok);
+        let mut seen = 0;
+        for _ in 0..100 {
+            seen = f.store.song_usage().len();
+            if seen > 0 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        assert_eq!(seen, 1);
+        assert_eq!(f.store.song_usage().len(), 1);
+        assert_eq!(f.store.song_usage()[0].0, hollyshow_core::SongId::new("s1"));
     }
 
     #[test]
@@ -730,6 +795,7 @@ mod tests {
             .dispatch(&op(), None, Command::ServiceMode { on: true });
         let timer = Timer::new("svc", "Culto", TimerKind::Countdown, 600);
         f.app.dispatch(&op(), None, Command::SetTimer { timer });
+        f.app.flush_session();
         assert!(SettingsRepo::get(&*f.store, SESSION_KEY).unwrap().is_some());
 
         // "Restart": a brand new engine and service over the same storage.

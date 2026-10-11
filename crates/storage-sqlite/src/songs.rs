@@ -303,7 +303,7 @@ fn summary_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SongSummary> {
 
 impl SongRepo for Store {
     fn search(&self, text: &str, limit: u32) -> StorageResult<Vec<SongSummary>> {
-        let conn = self.lock();
+        let conn = self.read();
         let limit = i64::from(limit);
         if text.trim().is_empty() {
             let mut st = conn
@@ -347,7 +347,7 @@ impl SongRepo for Store {
     }
 
     fn get(&self, id: &SongId) -> StorageResult<Option<Song>> {
-        load_song(&self.lock(), id.as_str())
+        load_song(&self.read(), id.as_str())
     }
 
     fn save(&self, song: &Song) -> StorageResult<()> {
@@ -394,7 +394,7 @@ impl SongRepo for Store {
 impl Store {
     /// CCLI report: songs shown in `[from_ms, to_ms)`, most shown first.
     pub fn usage_report(&self, from_ms: i64, to_ms: i64) -> StorageResult<Vec<UsageRow>> {
-        let conn = self.lock();
+        let conn = self.read();
         let mut st = conn
             .prepare_cached(
                 "SELECT song_id, MAX(title), MAX(ccli), COUNT(*), MAX(shown_at)
@@ -420,7 +420,7 @@ impl Store {
 
     /// Number of songs in the library.
     pub fn song_count(&self) -> StorageResult<u32> {
-        self.lock()
+        self.read()
             .query_row("SELECT count(*) FROM songs", [], |r| r.get(0))
             .map_err(map_err)
     }

@@ -34,13 +34,14 @@ tauri-plugin-log = "2"
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 base64 = "0.22"
 flate2 = "1"
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 keepawake = "0.6"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 hollyshow-storage-api = { workspace = true, features = ["testing"] }
