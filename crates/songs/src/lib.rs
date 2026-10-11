@@ -5,6 +5,22 @@
 //! * [`SongImporter`] implementations parse a file into [`Song`]s (never network, never panic on
 //!   malformed input; return [`ImportError`]).
 
+pub mod chordpro;
+pub mod chords;
+mod common;
+pub mod openlyrics;
+pub mod opensong;
+pub mod text;
+
+pub use chordpro::{export_chordpro, ChordProImporter};
+pub use chords::{
+    is_chord, is_chord_line, merge_chord_line, transpose_chord, transpose_key, transpose_song,
+    transpose_text,
+};
+pub use openlyrics::OpenLyricsImporter;
+pub use opensong::OpenSongImporter;
+pub use text::TextImporter;
+
 use hollyshow_core::{ArrangementId, Slide, SlideKind, Song, Theme};
 use thiserror::Error;
 
@@ -51,9 +67,42 @@ pub trait SongImporter {
     fn import(&self, input: &str) -> Result<Vec<Song>, ImportError>;
 }
 
+/// Guesses the format of `input`: `openlyrics`, `opensong`, `chordpro` or `text`.
+pub fn detect_format(input: &str) -> &'static str {
+    let t = input.trim_start_matches('\u{feff}').trim_start();
+    if t.starts_with('<') {
+        let head: String = t.chars().take(4000).collect::<String>().to_lowercase();
+        if head.contains("openlyrics.info") || head.contains("<properties") {
+            return "openlyrics";
+        }
+        if head.contains("<song") {
+            return "opensong";
+        }
+    }
+    let directive = t.lines().take(20).any(|l| {
+        let l = l.trim();
+        l.starts_with('{') && l.ends_with('}') && l.contains(|c: char| c.is_alphabetic())
+    });
+    if directive {
+        return "chordpro";
+    }
+    "text"
+}
+
+/// Imports `input` with the importer chosen by [`detect_format`].
+pub fn import_auto(input: &str) -> Result<Vec<Song>, ImportError> {
+    match detect_format(input) {
+        "openlyrics" => OpenLyricsImporter::default().import(input),
+        "opensong" => OpenSongImporter::default().import(input),
+        "chordpro" => ChordProImporter::default().import(input),
+        _ => TextImporter::default().import(input),
+    }
+}
+
 /// Straightforward splitter: sections in arrangement order, `max_lines` lines per slide, manual
 /// `---` breaks honoured, chords stripped from projected lines and kept in `chart`.
-/// Chord transposition is the songs builder's job (`SplitOptions::transpose` is already plumbed).
+/// `SplitOptions::transpose` shifts the chords of `chart` (and only those; the lyric lines carry
+/// no chords).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DefaultSplitter;
 
@@ -80,6 +129,16 @@ impl SlideSplitter for DefaultSplitter {
         opts: SplitOptions,
     ) -> Vec<Slide> {
         let max = usize::from(opts.max_lines.max(1));
+        let shift = i32::from(opts.transpose);
+        let flats = shift % 12 != 0 && {
+            let all: String = song
+                .sections
+                .iter()
+                .map(|s| s.lyrics.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            chords::prefers_flats(song.key.as_deref(), &all, shift)
+        };
         let mut slides = Vec::new();
         for section in song.ordered_sections(arrangement) {
             let raw: Vec<&str> = section.lyrics.lines().collect();
@@ -121,7 +180,10 @@ impl SlideSplitter for DefaultSplitter {
                 slide.kind = SlideKind::Lyrics;
                 slide.label = Some(section.label.clone());
                 slide.lines = part.iter().map(|l| strip_chords(l)).collect();
-                slide.chart = part.iter().map(|l| (*l).to_owned()).collect();
+                slide.chart = part
+                    .iter()
+                    .map(|l| chords::transpose_text(l, shift, flats))
+                    .collect();
                 if !trans.is_empty() {
                     slide.translation = (a..b)
                         .map(|i| trans.get(i).copied().unwrap_or("").to_owned())
@@ -200,6 +262,34 @@ mod tests {
         assert_eq!(slides[3].chart, ["[G]Coro"]);
         let ids: std::collections::HashSet<_> = slides.iter().map(|x| &x.id).collect();
         assert_eq!(ids.len(), slides.len(), "slide ids must be unique");
+    }
+
+    #[test]
+    fn transposes_the_chart_but_not_the_projected_lines() {
+        let s = song("[G]uno [D]dos");
+        let o = SplitOptions {
+            transpose: 2,
+            ..opts(4)
+        };
+        let slides = DefaultSplitter.split(&s, None, o);
+        assert_eq!(slides[0].lines, ["uno dos"]);
+        assert_eq!(slides[0].chart, ["[A]uno [E]dos"]);
+    }
+
+    #[test]
+    fn detects_formats() {
+        assert_eq!(
+            detect_format("<song xmlns=\"http://openlyrics.info/namespace/2009/song\">"),
+            "openlyrics"
+        );
+        assert_eq!(
+            detect_format("<?xml version=\"1.0\"?>\n<song><title>x</title></song>"),
+            "opensong"
+        );
+        assert_eq!(detect_format("{title: Hola}\n[G]hola"), "chordpro");
+        assert_eq!(detect_format("Verso 1\nhola"), "text");
+        let songs = import_auto("{title: Hola}\n[G]hola mundo").unwrap();
+        assert_eq!(songs[0].title, "Hola");
     }
 
     #[test]
