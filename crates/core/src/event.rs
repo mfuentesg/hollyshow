@@ -59,6 +59,16 @@ pub enum Event {
     OutputLookChanged {
         output: OutputId,
     },
+    OutputLayersChanged {
+        output: OutputId,
+    },
+    OutputRemoved {
+        output: OutputId,
+    },
+    /// The live item changed or its clock was reset.
+    ItemClockChanged {
+        item_id: Option<ItemId>,
+    },
     ServiceModeChanged {
         on: bool,
     },
@@ -89,6 +99,7 @@ impl Event {
                     | Event::StageMessageChanged { .. }
                     | Event::TimerChanged { .. }
                     | Event::TimerRemoved { .. }
+                    | Event::ItemClockChanged { .. }
             ),
             Role::Congregation => matches!(
                 self,

@@ -10,7 +10,7 @@
 
 use crate::bible::{ParallelLayout, Passage, VersionCode};
 use crate::ids::{ItemId, OutputId, PlaylistId, TimerId};
-use crate::state::{Cue, OutputLook, ShowEntry, Slide, Target, Timer};
+use crate::state::{Cue, OutputLayers, OutputLook, ShowEntry, Slide, Target, Timer};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -104,6 +104,18 @@ pub enum Command {
         output: OutputId,
         look: OutputLook,
     },
+    /// Replace the layer state (background/media/text/overlay/blackout) of an existing output.
+    SetOutputLayers {
+        output: OutputId,
+        layers: OutputLayers,
+    },
+    /// Forget an output (its look and layers). `main` cannot be removed.
+    RemoveOutput {
+        output: OutputId,
+    },
+    /// Restart the per-item clock of the live item (e.g. after a long pause).
+    ResetItemClock,
+    /// "Modo culto": lock accidental edits. Always allowed, so the operator can unlock.
     ServiceMode {
         on: bool,
     },

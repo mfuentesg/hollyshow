@@ -21,4 +21,9 @@ translation: Array<string>,
 /**
  * Lines with inline ChordPro chords for the musician / stage view.
  */
-chart: Array<string>, bible: Array<BibleColumn>, layout: ParallelLayout, media: MediaId | null, footer: string | null, themeId: ThemeId | null, };
+chart: Array<string>, bible: Array<BibleColumn>, layout: ParallelLayout, media: MediaId | null, footer: string | null, themeId: ThemeId | null, 
+/**
+ * Slides sharing a group render at one common font size (the smallest that fits them all),
+ * so a song does not jump between sizes. `None` lets every slide auto-fit on its own.
+ */
+sizeGroup: string | null, };

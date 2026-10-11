@@ -13,6 +13,7 @@ export function lyricSlide(id: string, label: string | null, lines: string[]): S
     media: null,
     footer: null,
     themeId: null,
+    sizeGroup: null,
   };
 }
 
@@ -54,6 +55,11 @@ export function emptyState(): PresentationState {
       main: { kind: "main", themeId: null, enabled: true, followsBlackout: true },
       stage: { kind: "stage", themeId: null, enabled: false, followsBlackout: false },
     },
+    outputLayers: {
+      main: { background: null, media: null, text: true, overlay: null, blackout: false },
+      stage: { background: null, media: null, text: true, overlay: null, blackout: false },
+    },
+    itemClock: null,
     serviceMode: false,
   };
 }

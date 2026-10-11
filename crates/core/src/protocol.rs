@@ -109,6 +109,8 @@ pub fn project_view(view: &StateView, role: Role) -> StateView {
         v.stage_message = None;
         v.timers.clear();
         v.outputs.clear();
+        v.output_layers.clear();
+        v.item_clock = None;
         v.service_mode = false;
     }
     if !role.sees_full_show() {
@@ -521,6 +523,49 @@ mod tests {
         assert!(crowd.view.stage_message.is_none() && crowd.view.timers.is_empty());
         assert!(crowd.view.live.is_some());
         assert_eq!(crowd.view.show_revision, 0);
+    }
+
+    #[test]
+    fn congregation_never_sees_layers_or_item_clock() {
+        let mut st = sample_state();
+        st.item_clock = Some(crate::state::ItemClock {
+            item_id: "a".into(),
+            planned_secs: 60,
+            started_at_ms: 1,
+        });
+        let crowd = project(&st, Role::Congregation).view;
+        assert!(crowd.output_layers.is_empty() && crowd.item_clock.is_none());
+        let stage = project(&st, Role::Stage).view;
+        assert!(stage.item_clock.is_some() && !stage.output_layers.is_empty());
+    }
+
+    #[test]
+    fn new_commands_have_stable_wire_shapes() {
+        let c: Command = serde_json::from_value(json!({
+            "kind": "setOutputLayers",
+            "output": "lobby",
+            "layers": {"background": null, "media": null, "text": true,
+                       "overlay": "Hola", "blackout": false}
+        }))
+        .unwrap();
+        assert!(matches!(c, Command::SetOutputLayers { .. }));
+        let c: Command = serde_json::from_value(json!({"kind": "resetItemClock"})).unwrap();
+        assert_eq!(c, Command::ResetItemClock);
+        let c: Command =
+            serde_json::from_value(json!({"kind": "removeOutput", "output": "lobby"})).unwrap();
+        assert!(matches!(c, Command::RemoveOutput { .. }));
+        assert!(Role::Operator.can_dispatch(&Command::ResetItemClock));
+        assert!(!Role::Pastor.can_dispatch(&Command::ResetItemClock));
+    }
+
+    #[test]
+    fn slides_without_size_group_still_deserialize() {
+        let s: crate::state::Slide = serde_json::from_value(json!({
+            "id": "x", "kind": "lyrics", "label": null, "lines": ["a"],
+            "media": null, "footer": null, "themeId": null
+        }))
+        .unwrap();
+        assert!(s.size_group.is_none());
     }
 
     #[test]

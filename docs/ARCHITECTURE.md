@@ -255,3 +255,21 @@ Resultado de la revisión independiente del andamiaje. Cada hallazgo se corrigi�
 - `Transpose` de acordes: `SplitOptions.transpose` ya llega al splitter; la transposición real la implementa el builder de canciones.
 - La persistencia de sesión escribe de forma síncrona tras cada comando aceptado (microsegundos con SQLite WAL); si midiéramos
   latencia visible, se moverá a un suscriptor del broadcast.
+
+## 12. Núcleo: añadidos de v1 (`crates/core`)
+
+- **Salidas con capas propias:** `output_layers[output]` (`OutputLayers`: fondo, media, texto, overlay, blackout) junto a
+  `outputs[output]` (`OutputLook`). `StateView::frame_for(output)` combina flags globales + look + capas en un `OutputFrame`
+  (el escenario con `follows_blackout=false` ignora el blackout global; el blackout por salida solo afecta a esa salida).
+  Comandos: `SetOutputLayers`, `RemoveOutput` (`main` no se puede borrar).
+- **Reloj por ítem:** `item_clock` arranca (reloj del host) al cambiar el ítem en vivo si tiene `duration_secs`;
+  `ItemClock::{remaining,overtime}_ms_at(now)`. `ResetItemClock` lo reinicia. `Timer::overtime_ms_at` para cuentas atrás.
+- **Modo culto:** con `service_mode` el reductor rechaza (`locked`) `UpdateSlide`, `SetOutputLook` y `RemoveOutput`;
+  navegar, blackout/clear/logo, capas, mensajes y timers siguen permitidos. `ServiceMode{on:false}` siempre pasa.
+- **Límites:** mensajes/overlays ≤ 280 caracteres, cuentas atrás ≤ 24 h, ids ≤ 64 (`invalid`).
+- **Playlist (puro):** `Playlist::{add_item, move_item, remove_item, duplicate_item, to_template, instantiate, schedule}`;
+  la persistencia sigue siendo del caso de uso en `app`.
+- **Troceado (puro, `core::split`):** `split_song` (orden del arreglo, `---`/líneas en blanco, `max_lines` equilibrado,
+  `size_group` compartido) y `split_passage` (1..=4 versiones cortadas en los mismos versículos; hueco = «—»).
+  `songs`/`bible` pueden delegar en ellos. `Slide.size_group` pide un tamaño de letra común a las diapositivas del grupo.
+- Al mostrar contenido que levanta `clear`/`logo` ahora se emiten `ClearChanged/LogoChanged{on:false}`.

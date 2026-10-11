@@ -54,6 +54,10 @@ pub struct Slide {
     pub media: Option<MediaId>,
     pub footer: Option<String>,
     pub theme_id: Option<ThemeId>,
+    /// Slides sharing a group render at one common font size (the smallest that fits them all),
+    /// so a song does not jump between sizes. `None` lets every slide auto-fit on its own.
+    #[serde(default)]
+    pub size_group: Option<String>,
 }
 
 impl Slide {
@@ -70,6 +74,7 @@ impl Slide {
             media: None,
             footer: None,
             theme_id: None,
+            size_group: None,
         }
     }
 
@@ -178,6 +183,11 @@ impl Timer {
         }
     }
 
+    /// Milliseconds past the planned duration (0 while on time); `None` for stopwatches.
+    pub fn overtime_ms_at(&self, now_ms: i64) -> Option<i64> {
+        self.remaining_at(now_ms).map(|r| (-r).max(0))
+    }
+
     /// Remaining milliseconds for countdowns (negative once overrun); `None` for stopwatches.
     pub fn remaining_at(&self, now_ms: i64) -> Option<i64> {
         (self.kind == TimerKind::Countdown)
@@ -211,6 +221,82 @@ pub struct OutputLook {
     pub follows_blackout: bool,
 }
 
+/// Layer state of one output, independent of the others (PLAN §2.5 C). The global
+/// `blackout`/`clear`/`logo` flags still apply on top (see [`StateView::frame_for`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OutputLayers {
+    /// Background override for this output (replaces the theme background).
+    pub background: Option<MediaId>,
+    /// Foreground media (image/video) drawn above the background and below the text.
+    pub media: Option<MediaId>,
+    /// Whether the slide text is drawn on this output.
+    pub text: bool,
+    /// Free text drawn above everything (lobby notice, lower-third alert).
+    pub overlay: Option<String>,
+    /// Blackout of this output only; the global blackout is separate.
+    pub blackout: bool,
+}
+
+impl Default for OutputLayers {
+    fn default() -> Self {
+        Self {
+            background: None,
+            media: None,
+            text: true,
+            overlay: None,
+            blackout: false,
+        }
+    }
+}
+
+/// What one output must draw right now: the result of combining the global flags, the output's
+/// own look and its layers. Renderers use this instead of re-deriving the rules.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OutputFrame {
+    pub output: OutputId,
+    pub kind: OutputKind,
+    pub theme_id: Option<ThemeId>,
+    pub blackout: bool,
+    pub logo: bool,
+    pub background: Option<MediaId>,
+    pub media: Option<MediaId>,
+    /// Slide text visible (false when cleared, hidden by the layer, or blacked out).
+    pub show_text: bool,
+    pub overlay: Option<String>,
+    pub cue: Option<Cue>,
+}
+
+/// Clock of the item currently live, started when the operator reaches the item (per-item
+/// duration). The host clock stamps `started_at_ms`; viewers derive elapsed and overtime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ItemClock {
+    pub item_id: ItemId,
+    pub planned_secs: u32,
+    #[ts(type = "number")]
+    pub started_at_ms: i64,
+}
+
+impl ItemClock {
+    pub fn elapsed_ms_at(&self, now_ms: i64) -> i64 {
+        (now_ms - self.started_at_ms).max(0)
+    }
+
+    /// Milliseconds left of the planned time (negative once overrun).
+    pub fn remaining_ms_at(&self, now_ms: i64) -> i64 {
+        i64::from(self.planned_secs) * 1000 - self.elapsed_ms_at(now_ms)
+    }
+
+    pub fn overtime_ms_at(&self, now_ms: i64) -> i64 {
+        (-self.remaining_ms_at(now_ms)).max(0)
+    }
+}
+
 /// Everything that changes at 60 Hz of human speed: small, cheap to broadcast to every client.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -230,8 +316,40 @@ pub struct StateView {
     pub stage_message: Option<StageMessage>,
     pub timers: Vec<Timer>,
     pub outputs: BTreeMap<OutputId, OutputLook>,
-    /// "Modo culto": locks accidental edits in the UI.
+    /// Per-output layer state; every key of `outputs` has an entry.
+    #[serde(default)]
+    pub output_layers: BTreeMap<OutputId, OutputLayers>,
+    /// Clock of the live item (only when it has a planned duration).
+    #[serde(default)]
+    pub item_clock: Option<ItemClock>,
+    /// "Modo culto": locks accidental edits (live edits, outputs, timers) in the UI and reducer.
     pub service_mode: bool,
+}
+
+impl StateView {
+    /// Combines global flags, the output's look and its layers into what it must draw.
+    /// Returns `None` for unknown or disabled outputs.
+    ///
+    /// * Blackout: the global flag (unless the output ignores it) or the output's own flag.
+    /// * Text: hidden by `clear`, by the output's text layer, or by any blackout.
+    /// * The live cue is always carried so outputs can fade back without a round trip.
+    pub fn frame_for(&self, output: &OutputId) -> Option<OutputFrame> {
+        let look = self.outputs.get(output).filter(|l| l.enabled)?;
+        let layers = self.output_layers.get(output).cloned().unwrap_or_default();
+        let blackout = (self.blackout && look.follows_blackout) || layers.blackout;
+        Some(OutputFrame {
+            output: output.clone(),
+            kind: look.kind,
+            theme_id: look.theme_id.clone(),
+            blackout,
+            logo: self.logo && !blackout,
+            background: layers.background,
+            media: layers.media,
+            show_text: layers.text && !self.clear && !blackout,
+            overlay: layers.overlay.filter(|_| !blackout),
+            cue: self.live.clone(),
+        })
+    }
 }
 
 /// Full authoritative state, including the expanded show.
@@ -252,6 +370,10 @@ pub struct PresentationState {
     pub stage_message: Option<StageMessage>,
     pub timers: Vec<Timer>,
     pub outputs: BTreeMap<OutputId, OutputLook>,
+    #[serde(default)]
+    pub output_layers: BTreeMap<OutputId, OutputLayers>,
+    #[serde(default)]
+    pub item_clock: Option<ItemClock>,
     pub service_mode: bool,
 }
 
@@ -287,7 +409,12 @@ impl Default for PresentationState {
             logo: false,
             stage_message: None,
             timers: vec![],
+            output_layers: outputs
+                .keys()
+                .map(|k| (k.clone(), OutputLayers::default()))
+                .collect(),
             outputs,
+            item_clock: None,
             service_mode: false,
         }
     }
@@ -306,6 +433,8 @@ impl PresentationState {
             stage_message: self.stage_message.clone(),
             timers: self.timers.clone(),
             outputs: self.outputs.clone(),
+            output_layers: self.output_layers.clone(),
+            item_clock: self.item_clock.clone(),
             service_mode: self.service_mode,
         }
     }

@@ -14,7 +14,17 @@
 use crate::command::{Command, Ctx, EngineCommand, Restore};
 use crate::error::CoreError;
 use crate::event::Event;
-use crate::state::{Cue, PresentationState, StageMessage, Target, TimerRun};
+use crate::state::{
+    Cue, ItemClock, OutputLayers, PresentationState, StageMessage, Target, Timer, TimerKind,
+    TimerRun,
+};
+
+/// Longest stage message / overlay accepted (it must stay readable from the stage).
+pub const MAX_MESSAGE_CHARS: usize = 280;
+/// Longest countdown accepted: 24 h.
+pub const MAX_TIMER_SECS: u32 = 24 * 3600;
+const MAX_LABEL_CHARS: usize = 80;
+const MAX_ID_CHARS: usize = 64;
 
 pub type Applied = (PresentationState, Vec<Event>);
 
@@ -44,6 +54,7 @@ pub fn apply(
                 Target::Live => set_live(&mut next, &mut events, cue),
                 Target::Preview => set_preview(&mut next, &mut events, Some(cue)),
             }
+            sync_item_clock(state, &mut next, ctx, &mut events);
             return finish(state, next, events);
         }
         EngineCommand::LoadShow { entries } => {
@@ -66,6 +77,7 @@ pub fn apply(
             next.live = live;
             next.timers = timers;
             next.service_mode = service_mode;
+            sync_item_clock(state, &mut next, ctx, &mut events);
             return finish(state, next, events);
         }
     };
@@ -155,6 +167,9 @@ pub fn apply(
                 .map(|t| t.trim().to_owned())
                 .filter(|t| !t.is_empty())
                 .map(|text| StageMessage { text });
+            if let Some(m) = &msg {
+                check_len("stage message", &m.text, MAX_MESSAGE_CHARS)?;
+            }
             if next.stage_message != msg {
                 events.push(Event::StageMessageChanged {
                     text: msg.as_ref().map(|m| m.text.clone()),
@@ -167,6 +182,7 @@ pub fn apply(
             slide_index,
             slide,
         } => {
+            ensure_unlocked(state)?;
             let ei = state
                 .show
                 .iter()
@@ -200,6 +216,7 @@ pub fn apply(
             }
         }
         Command::SetTimer { timer } => {
+            validate_timer(&timer)?;
             let id = timer.id.clone();
             match next.timers.iter_mut().find(|t| t.id == id) {
                 Some(existing) => {
@@ -258,9 +275,43 @@ pub fn apply(
             events.push(Event::TimerRemoved { id });
         }
         Command::SetOutputLook { output, look } => {
+            ensure_unlocked(state)?;
+            check_id("output id", output.as_str())?;
             if next.outputs.get(&output) != Some(&look) {
                 next.outputs.insert(output.clone(), look);
+                next.output_layers.entry(output.clone()).or_default();
                 events.push(Event::OutputLookChanged { output });
+            }
+        }
+        Command::SetOutputLayers { output, layers } => {
+            if !state.outputs.contains_key(&output) {
+                return Err(CoreError::UnknownOutput(output.to_string()));
+            }
+            let layers = normalise_layers(layers)?;
+            if state.output_layers.get(&output) != Some(&layers) {
+                next.output_layers.insert(output.clone(), layers);
+                events.push(Event::OutputLayersChanged { output });
+            }
+        }
+        Command::RemoveOutput { output } => {
+            ensure_unlocked(state)?;
+            if output.as_str() == MAIN_OUTPUT {
+                return Err(CoreError::Invalid(
+                    "the main output cannot be removed".into(),
+                ));
+            }
+            if next.outputs.remove(&output).is_none() {
+                return Err(CoreError::UnknownOutput(output.to_string()));
+            }
+            next.output_layers.remove(&output);
+            events.push(Event::OutputRemoved { output });
+        }
+        Command::ResetItemClock => {
+            if let Some(clock) = next.item_clock.as_mut() {
+                clock.started_at_ms = ctx.now_ms;
+                events.push(Event::ItemClockChanged {
+                    item_id: Some(clock.item_id.clone()),
+                });
             }
         }
         Command::ServiceMode { on } => {
@@ -271,7 +322,89 @@ pub fn apply(
         }
     }
 
+    sync_item_clock(state, &mut next, ctx, &mut events);
     finish(state, next, events)
+}
+
+const MAIN_OUTPUT: &str = "main";
+
+/// Starts the per-item clock when the live item changes: the clock exists only for items with a
+/// planned duration and is dropped for ad-hoc content.
+fn sync_item_clock(
+    state: &PresentationState,
+    next: &mut PresentationState,
+    ctx: Ctx,
+    events: &mut Vec<Event>,
+) {
+    let item_of = |s: &PresentationState| s.live.as_ref().and_then(|c| c.item_id.clone());
+    let live_item = item_of(next);
+    if live_item == item_of(state) {
+        return;
+    }
+    let planned = live_item
+        .as_ref()
+        .and_then(|id| next.entry(id))
+        .and_then(|e| e.duration_secs)
+        .filter(|d| *d > 0);
+    next.item_clock = match (live_item.clone(), planned) {
+        (Some(item_id), Some(planned_secs)) => Some(ItemClock {
+            item_id,
+            planned_secs,
+            started_at_ms: ctx.now_ms,
+        }),
+        _ => None,
+    };
+    if next.item_clock != state.item_clock {
+        events.push(Event::ItemClockChanged { item_id: live_item });
+    }
+}
+
+fn ensure_unlocked(state: &PresentationState) -> Result<(), CoreError> {
+    if state.service_mode {
+        Err(CoreError::Locked)
+    } else {
+        Ok(())
+    }
+}
+
+fn check_len(what: &str, text: &str, max: usize) -> Result<(), CoreError> {
+    if text.chars().count() > max {
+        return Err(CoreError::Invalid(format!(
+            "{what} exceeds {max} characters"
+        )));
+    }
+    Ok(())
+}
+
+fn check_id(what: &str, id: &str) -> Result<(), CoreError> {
+    if id.trim().is_empty() || id.chars().count() > MAX_ID_CHARS {
+        return Err(CoreError::Invalid(format!(
+            "{what} must have 1..={MAX_ID_CHARS} characters"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_timer(t: &Timer) -> Result<(), CoreError> {
+    check_id("timer id", t.id.as_str())?;
+    check_len("timer label", &t.label, MAX_LABEL_CHARS)?;
+    if t.kind == TimerKind::Countdown && t.duration_secs > MAX_TIMER_SECS {
+        return Err(CoreError::Invalid(format!(
+            "countdown longer than {MAX_TIMER_SECS} s"
+        )));
+    }
+    Ok(())
+}
+
+fn normalise_layers(mut l: OutputLayers) -> Result<OutputLayers, CoreError> {
+    l.overlay = l
+        .overlay
+        .map(|t| t.trim().to_owned())
+        .filter(|t| !t.is_empty());
+    if let Some(o) = &l.overlay {
+        check_len("overlay", o, MAX_MESSAGE_CHARS)?;
+    }
+    Ok(l)
 }
 
 /// Bumps the version when something observable changed.
@@ -339,8 +472,14 @@ fn go_live(next: &mut PresentationState, events: &mut Vec<Event>, pos: (usize, u
 fn set_live(next: &mut PresentationState, events: &mut Vec<Event>, cue: Cue) {
     // Showing content implies the operator wants to see it: lift "clear" and "logo".
     // Blackout is an explicit safety state and is only lifted by `Blackout { on: false }`.
-    next.clear = false;
-    next.logo = false;
+    if next.clear {
+        next.clear = false;
+        events.push(Event::ClearChanged { on: false });
+    }
+    if next.logo {
+        next.logo = false;
+        events.push(Event::LogoChanged { on: false });
+    }
     if next.live.as_ref() != Some(&cue) {
         events.push(Event::SlideChanged {
             target: Target::Live,
@@ -778,5 +917,633 @@ mod tests {
             },
         );
         assert_eq!(s, before);
+    }
+
+    // ---- outputs, layers, frames ----
+
+    use crate::ids::{MediaId, OutputId};
+    use crate::state::{OutputKind, OutputLayers, OutputLook};
+
+    fn lobby_look() -> OutputLook {
+        OutputLook {
+            kind: OutputKind::Secondary,
+            theme_id: None,
+            enabled: true,
+            follows_blackout: true,
+        }
+    }
+
+    fn with_lobby(s: &PresentationState) -> PresentationState {
+        run(
+            s,
+            Command::SetOutputLook {
+                output: "lobby".into(),
+                look: lobby_look(),
+            },
+        )
+    }
+
+    #[test]
+    fn new_output_gets_default_layers_and_look_is_idempotent() {
+        let s = with_lobby(&loaded());
+        assert_eq!(
+            s.output_layers.get(&OutputId::new("lobby")),
+            Some(&OutputLayers::default())
+        );
+        let (s2, ev) = apply(
+            &s,
+            Command::SetOutputLook {
+                output: "lobby".into(),
+                look: lobby_look(),
+            },
+        )
+        .unwrap();
+        assert_eq!(s2, s);
+        assert!(ev.is_empty());
+        assert!(matches!(
+            apply(
+                &s,
+                Command::SetOutputLook {
+                    output: " ".into(),
+                    look: lobby_look()
+                }
+            ),
+            Err(CoreError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn layers_require_a_known_output_and_are_independent() {
+        let s = with_lobby(&loaded());
+        let layers = OutputLayers {
+            background: Some(MediaId::new("bg")),
+            overlay: Some("  Bienvenidos  ".into()),
+            blackout: true,
+            ..OutputLayers::default()
+        };
+        assert!(matches!(
+            apply(
+                &s,
+                Command::SetOutputLayers {
+                    output: "nope".into(),
+                    layers: layers.clone()
+                }
+            ),
+            Err(CoreError::UnknownOutput(_))
+        ));
+        let cmd = Command::SetOutputLayers {
+            output: "lobby".into(),
+            layers,
+        };
+        let s2 = run(&s, cmd.clone());
+        let lobby = &s2.output_layers[&OutputId::new("lobby")];
+        assert_eq!(lobby.overlay.as_deref(), Some("Bienvenidos"));
+        assert_eq!(
+            s2.output_layers[&OutputId::new("main")],
+            OutputLayers::default()
+        );
+        let (s3, ev) = apply(&s2, cmd).unwrap();
+        assert_eq!(s3.version, s2.version);
+        assert!(ev.is_empty());
+        let too_long = Command::SetOutputLayers {
+            output: "lobby".into(),
+            layers: OutputLayers {
+                overlay: Some("x".repeat(MAX_MESSAGE_CHARS + 1)),
+                ..OutputLayers::default()
+            },
+        };
+        assert!(matches!(apply(&s2, too_long), Err(CoreError::Invalid(_))));
+    }
+
+    #[test]
+    fn frame_combines_global_flags_look_and_layers() {
+        let mut s = with_lobby(&loaded());
+        s = run(&s, next(None));
+        let (main, stage, lobby) = (
+            OutputId::new("main"),
+            OutputId::new("stage"),
+            OutputId::new("lobby"),
+        );
+        // Stage is disabled by default.
+        assert!(s.view().frame_for(&stage).is_none());
+        assert!(s.view().frame_for(&OutputId::new("ghost")).is_none());
+        assert!(s.view().frame_for(&main).unwrap().show_text);
+
+        // Output-only blackout leaves the others alone.
+        s = run(
+            &s,
+            Command::SetOutputLayers {
+                output: lobby.clone(),
+                layers: OutputLayers {
+                    blackout: true,
+                    ..OutputLayers::default()
+                },
+            },
+        );
+        let v = s.view();
+        assert!(v.frame_for(&lobby).unwrap().blackout);
+        assert!(!v.frame_for(&main).unwrap().blackout);
+
+        // Global blackout: the stage ignores it when it does not follow blackout.
+        s = run(
+            &s,
+            Command::SetOutputLook {
+                output: stage.clone(),
+                look: OutputLook {
+                    kind: OutputKind::Stage,
+                    theme_id: None,
+                    enabled: true,
+                    follows_blackout: false,
+                },
+            },
+        );
+        s = run(&s, Command::Blackout { on: true });
+        let v = s.view();
+        assert!(v.frame_for(&main).unwrap().blackout);
+        assert!(!v.frame_for(&main).unwrap().show_text);
+        assert!(!v.frame_for(&stage).unwrap().blackout);
+        assert!(v.frame_for(&stage).unwrap().show_text);
+
+        // Clear hides text only; the text layer hides it per output.
+        s = run(&s, Command::Blackout { on: false });
+        s = run(&s, Command::Clear { on: true });
+        assert!(!s.view().frame_for(&main).unwrap().show_text);
+        s = run(&s, Command::Clear { on: false });
+        s = run(
+            &s,
+            Command::SetOutputLayers {
+                output: main.clone(),
+                layers: OutputLayers {
+                    text: false,
+                    media: Some(MediaId::new("m")),
+                    ..OutputLayers::default()
+                },
+            },
+        );
+        let f = s.view().frame_for(&main).unwrap();
+        assert!(!f.show_text);
+        assert_eq!(f.media, Some(MediaId::new("m")));
+        assert!(f.cue.is_some());
+    }
+
+    #[test]
+    fn remove_output_drops_look_and_layers_but_never_main() {
+        let s = with_lobby(&loaded());
+        assert!(matches!(
+            apply(
+                &s,
+                Command::RemoveOutput {
+                    output: "main".into()
+                }
+            ),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            apply(
+                &s,
+                Command::RemoveOutput {
+                    output: "ghost".into()
+                }
+            ),
+            Err(CoreError::UnknownOutput(_))
+        ));
+        let s2 = run(
+            &s,
+            Command::RemoveOutput {
+                output: "lobby".into(),
+            },
+        );
+        assert!(!s2.outputs.contains_key(&OutputId::new("lobby")));
+        assert!(!s2.output_layers.contains_key(&OutputId::new("lobby")));
+        assert_eq!(s2.outputs.len(), s2.output_layers.len());
+    }
+
+    // ---- per-item clock ----
+
+    fn timed_show() -> PresentationState {
+        let mut a = entry("a", 2);
+        a.duration_secs = Some(60);
+        let mut b = entry("b", 1);
+        b.duration_secs = Some(10);
+        let c = entry("c", 1);
+        run(
+            &PresentationState::default(),
+            EngineCommand::LoadShow {
+                entries: vec![a, b, c],
+            },
+        )
+    }
+
+    #[test]
+    fn item_clock_starts_on_item_change_not_slide_change() {
+        let s = timed_show();
+        let s = apply_at(&s, 1_000, next(None)).unwrap().0;
+        let clock = s.item_clock.clone().unwrap();
+        assert_eq!(
+            (
+                clock.item_id.as_str(),
+                clock.planned_secs,
+                clock.started_at_ms
+            ),
+            ("a", 60, 1_000)
+        );
+        // Next slide of the same item keeps the clock.
+        let s2 = apply_at(&s, 30_000, next(None)).unwrap().0;
+        assert_eq!(s2.item_clock, s.item_clock);
+        // New item restarts it with the new duration.
+        let (s3, ev) = apply_at(&s2, 40_000, next(None)).unwrap();
+        let c3 = s3.item_clock.clone().unwrap();
+        assert_eq!(
+            (c3.item_id.as_str(), c3.planned_secs, c3.started_at_ms),
+            ("b", 10, 40_000)
+        );
+        assert!(ev
+            .iter()
+            .any(|e| matches!(e, Event::ItemClockChanged { .. })));
+        // An item without duration has no clock.
+        let s4 = apply_at(&s3, 41_000, next(None)).unwrap().0;
+        assert!(s4.item_clock.is_none());
+    }
+
+    #[test]
+    fn item_clock_overtime_and_reset() {
+        let s = apply_at(&timed_show(), 0, next(None)).unwrap().0;
+        let c = s.item_clock.clone().unwrap();
+        assert_eq!(c.remaining_ms_at(45_000), 15_000);
+        assert_eq!(c.overtime_ms_at(45_000), 0);
+        assert_eq!(c.overtime_ms_at(75_000), 15_000);
+        assert_eq!(c.elapsed_ms_at(-5), 0);
+        let s2 = apply_at(&s, 75_000, Command::ResetItemClock).unwrap().0;
+        assert_eq!(s2.item_clock.unwrap().started_at_ms, 75_000);
+        // No clock: reset is a harmless no-op.
+        let none = apply(&loaded(), Command::ResetItemClock).unwrap();
+        assert!(none.1.is_empty());
+    }
+
+    #[test]
+    fn adhoc_bible_drops_the_item_clock() {
+        let s = apply_at(&timed_show(), 0, next(None)).unwrap().0;
+        let s = run(&s, bible_cmd(Slide::blank("bible")));
+        assert!(s.item_clock.is_none());
+    }
+
+    #[test]
+    fn restore_restarts_the_clock_of_the_restored_item() {
+        let s = timed_show();
+        let live = s.cue_at((0, 1));
+        let r = Restore {
+            live: Some(live),
+            timers: vec![],
+            service_mode: false,
+        };
+        let s = apply_at(&s, 9_000, EngineCommand::Restore(r)).unwrap().0;
+        assert_eq!(s.item_clock.unwrap().started_at_ms, 9_000);
+    }
+
+    #[test]
+    fn timer_overtime_helper() {
+        let mut t = Timer::new("t", "t", TimerKind::Countdown, 10);
+        t.run = TimerRun::Running;
+        t.started_at_ms = Some(0);
+        assert_eq!(t.overtime_ms_at(4_000), Some(0));
+        assert_eq!(t.overtime_ms_at(12_500), Some(2_500));
+        let sw = Timer::new("s", "s", TimerKind::Stopwatch, 0);
+        assert_eq!(sw.overtime_ms_at(1), None);
+    }
+
+    // ---- modo culto ----
+
+    #[test]
+    fn service_mode_locks_edits_but_not_operation() {
+        let mut s = loaded();
+        s = run(&s, next(None));
+        s = run(&s, Command::ServiceMode { on: true });
+        let locked: Vec<Command> = vec![
+            Command::UpdateSlide {
+                item_id: "a".into(),
+                slide_index: 0,
+                slide: Slide::lyrics("a:0", None, &["x"]),
+            },
+            Command::SetOutputLook {
+                output: "lobby".into(),
+                look: lobby_look(),
+            },
+            Command::RemoveOutput {
+                output: "stage".into(),
+            },
+        ];
+        for c in locked {
+            let before = s.clone();
+            assert_eq!(
+                apply(&s, c.clone()).unwrap_err(),
+                CoreError::Locked,
+                "{c:?}"
+            );
+            assert_eq!(s, before);
+        }
+        // Operating the service stays possible.
+        for c in [
+            next(None),
+            Command::Blackout { on: true },
+            Command::Clear { on: true },
+            Command::Logo { on: true },
+            Command::StageMessage {
+                text: Some("hola".into()),
+            },
+            Command::SetOutputLayers {
+                output: "main".into(),
+                layers: OutputLayers {
+                    text: false,
+                    ..OutputLayers::default()
+                },
+            },
+            // Timers stay editable: a prayer timer is added mid-service.
+            Command::SetTimer {
+                timer: Timer::new("t", "t", TimerKind::Stopwatch, 0),
+            },
+        ] {
+            assert!(apply(&s, c).is_ok());
+        }
+        // Unlock, then edits work again.
+        s = run(&s, Command::ServiceMode { on: false });
+        assert!(apply(
+            &s,
+            Command::UpdateSlide {
+                item_id: "a".into(),
+                slide_index: 0,
+                slide: Slide::lyrics("a:0", None, &["x"]),
+            }
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn host_commands_ignore_the_lock() {
+        let s = run(&loaded(), Command::ServiceMode { on: true });
+        let s = run(
+            &s,
+            EngineCommand::LoadShow {
+                entries: vec![entry("z", 1)],
+            },
+        );
+        assert_eq!(s.show.len(), 1);
+    }
+
+    // ---- validation ----
+
+    #[test]
+    fn oversized_inputs_are_rejected() {
+        let s = loaded();
+        assert!(matches!(
+            apply(
+                &s,
+                Command::StageMessage {
+                    text: Some("x".repeat(MAX_MESSAGE_CHARS + 1))
+                }
+            ),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(apply(
+            &s,
+            Command::StageMessage {
+                text: Some("x".repeat(MAX_MESSAGE_CHARS))
+            }
+        )
+        .is_ok());
+        let mut t = Timer::new("t", "t", TimerKind::Countdown, MAX_TIMER_SECS + 1);
+        assert!(matches!(
+            apply(&s, Command::SetTimer { timer: t.clone() }),
+            Err(CoreError::Invalid(_))
+        ));
+        t.duration_secs = MAX_TIMER_SECS;
+        assert!(apply(&s, Command::SetTimer { timer: t.clone() }).is_ok());
+        t.label = "l".repeat(200);
+        assert!(apply(&s, Command::SetTimer { timer: t }).is_err());
+    }
+
+    // ---- idempotency of every absolute command ----
+
+    #[test]
+    fn every_absolute_command_is_idempotent_and_rejections_are_pure() {
+        let base = with_lobby(&run(&loaded(), next(None)));
+        let timer = Timer::new("t", "t", TimerKind::Countdown, 30);
+        let cmds: Vec<Command> = vec![
+            Command::GoTo {
+                item_id: "b".into(),
+                slide_index: 1,
+                target: Target::Live,
+            },
+            Command::GoTo {
+                item_id: "b".into(),
+                slide_index: 0,
+                target: Target::Preview,
+            },
+            Command::ShowItem {
+                item_id: "b".into(),
+                target: Target::Live,
+            },
+            Command::Blackout { on: true },
+            Command::Clear { on: true },
+            Command::Logo { on: true },
+            Command::StageMessage {
+                text: Some("hola".into()),
+            },
+            Command::UpdateSlide {
+                item_id: "a".into(),
+                slide_index: 1,
+                slide: Slide::lyrics("a:1", None, &["n"]),
+            },
+            Command::SetTimer { timer },
+            Command::SetOutputLook {
+                output: "x".into(),
+                look: lobby_look(),
+            },
+            Command::SetOutputLayers {
+                output: "lobby".into(),
+                layers: OutputLayers {
+                    overlay: Some("o".into()),
+                    ..OutputLayers::default()
+                },
+            },
+            Command::ServiceMode { on: true },
+            Command::ResetItemClock,
+        ];
+        for c in cmds {
+            let once = apply_at(&base, 5, c.clone()).unwrap().0;
+            let (twice, ev) = apply_at(&once, 9, c.clone()).unwrap();
+            assert_eq!(twice, once, "{c:?} must be idempotent");
+            assert!(ev.is_empty(), "{c:?} repeated must emit nothing");
+        }
+        for bad in [
+            Command::GoTo {
+                item_id: "zzz".into(),
+                slide_index: 0,
+                target: Target::Live,
+            },
+            Command::StartTimer { id: "ghost".into() },
+            Command::PauseTimer { id: "ghost".into() },
+            Command::ResetTimer { id: "ghost".into() },
+            Command::RemoveTimer { id: "ghost".into() },
+            Command::TakePreview.clone(),
+        ] {
+            let mut s = base.clone();
+            s.preview = None;
+            let before = s.clone();
+            if apply(&s, bad).is_err() {
+                assert_eq!(s, before);
+            }
+        }
+    }
+
+    #[test]
+    fn timer_commands_are_idempotent_at_the_same_clock() {
+        let s = run(
+            &loaded(),
+            Command::SetTimer {
+                timer: Timer::new("t", "t", TimerKind::Countdown, 30),
+            },
+        );
+        let started = apply_at(&s, 100, Command::StartTimer { id: "t".into() })
+            .unwrap()
+            .0;
+        let again = apply_at(&started, 900, Command::StartTimer { id: "t".into() }).unwrap();
+        assert_eq!(
+            again.0, started,
+            "start while running keeps the original start"
+        );
+        assert!(again.1.is_empty());
+        let paused = apply_at(&started, 200, Command::PauseTimer { id: "t".into() })
+            .unwrap()
+            .0;
+        let again = apply_at(&paused, 999, Command::PauseTimer { id: "t".into() }).unwrap();
+        assert_eq!(again.0, paused);
+        let reset = run(&paused, Command::ResetTimer { id: "t".into() });
+        assert_eq!(run(&reset, Command::ResetTimer { id: "t".into() }), reset);
+    }
+
+    // ---- property tests ----
+
+    mod props {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn total_slides(s: &PresentationState) -> usize {
+            s.show.iter().map(|e| e.slides.len()).sum()
+        }
+
+        fn flat_index(s: &PresentationState) -> Option<usize> {
+            let (ei, si) = s.live_position()?;
+            Some(s.show[..ei].iter().map(|e| e.slides.len()).sum::<usize>() + si)
+        }
+
+        proptest! {
+            /// N clients that all read version v and press Next with expectedVersion = v: exactly
+            /// one wins, whatever the arrival order, and live moves by exactly one slide.
+            #[test]
+            fn concurrent_next_advances_exactly_one_slide(
+                clients in 2usize..12,
+                start in 0usize..3,
+                order_seed in any::<u64>(),
+            ) {
+                let mut s = loaded();
+                for _ in 0..start {
+                    s = run(&s, next(None));
+                }
+                let v = s.version;
+                let before = flat_index(&s);
+                let mut order: Vec<usize> = (0..clients).collect();
+                // Deterministic shuffle from the seed.
+                let mut x = order_seed | 1;
+                for i in (1..order.len()).rev() {
+                    x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+                    order.swap(i, (x % (i as u64 + 1)) as usize);
+                }
+                let mut wins = 0;
+                for _ in order {
+                    match apply(&s, next(Some(v))) {
+                        Ok((n, _)) => { s = n; wins += 1; }
+                        Err(e) => prop_assert_eq!(e.code(), "version_mismatch"),
+                    }
+                }
+                // `start < 4` keeps live before the last slide, so the winner always moves.
+                prop_assert_eq!(wins, 1);
+                let moved = match (before, flat_index(&s)) {
+                    (Some(a), Some(b)) => b - a,
+                    (None, Some(b)) => b + 1,
+                    _ => 0,
+                };
+                prop_assert_eq!(moved, 1);
+            }
+
+            /// Same race with a Prev mixed in: still at most one relative command succeeds per
+            /// observed version.
+            #[test]
+            fn mixed_relative_commands_succeed_once_per_version(
+                kinds in proptest::collection::vec(any::<bool>(), 2..10),
+            ) {
+                let mut s = run(&run(&loaded(), next(None)), next(None));
+                let v = s.version;
+                let mut ok = 0;
+                for forward in kinds {
+                    let c = if forward {
+                        next(Some(v))
+                    } else {
+                        Command::Prev { expected_version: Some(v) }
+                    };
+                    if let Ok((n, _)) = apply(&s, c) { s = n; ok += 1; }
+                }
+                prop_assert_eq!(ok, 1);
+                prop_assert_eq!(s.version, v + 1);
+            }
+
+            /// Arbitrary command streams: version only grows by 0 or 1, rejected commands never
+            /// touch the state, and live always points at valid content.
+            #[test]
+            fn random_streams_keep_the_invariants(ops in proptest::collection::vec(0u8..16, 1..60)) {
+                let mut s = timed_show();
+                let mut now = 0i64;
+                for op in ops {
+                    now += 700;
+                    let cmd = match op {
+                        0..=2 => next(None),
+                        3 => Command::Prev { expected_version: None },
+                        4 => Command::Blackout { on: op % 2 == 0 },
+                        5 => Command::Clear { on: true },
+                        6 => Command::Logo { on: true },
+                        7 => Command::GoTo { item_id: "b".into(), slide_index: 0, target: Target::Live },
+                        8 => Command::GoTo { item_id: "ghost".into(), slide_index: 0, target: Target::Live },
+                        9 => Command::TakePreview,
+                        10 => Command::SetTimer { timer: Timer::new("t", "t", TimerKind::Countdown, 5) },
+                        11 => Command::StartTimer { id: "t".into() },
+                        12 => Command::PauseTimer { id: "t".into() },
+                        13 => Command::ServiceMode { on: now % 2 == 0 },
+                        14 => Command::RemoveTimer { id: "t".into() },
+                        _ => Command::ResetItemClock,
+                    };
+                    if let Ok((n, ev)) = apply_at(&s, now, cmd) {
+                        {
+                            prop_assert!(n.version == s.version || n.version == s.version + 1);
+                            if n.version == s.version {
+                                prop_assert!(n == s && ev.is_empty());
+                            } else {
+                                prop_assert!(!ev.is_empty());
+                            }
+                            s = n;
+                        }
+                    }
+                    if s.live.is_some() && s.live.as_ref().unwrap().item_id.is_some() {
+                        prop_assert!(s.live_position().is_some());
+                    }
+                    prop_assert_eq!(s.outputs.len(), s.output_layers.len());
+                    prop_assert!(flat_index(&s).is_none_or(|i| i < total_slides(&s)));
+                    if let Some(c) = &s.item_clock {
+                        prop_assert_eq!(
+                            s.live.as_ref().and_then(|l| l.item_id.as_ref()),
+                            Some(&c.item_id)
+                        );
+                    }
+                }
+            }
+        }
     }
 }

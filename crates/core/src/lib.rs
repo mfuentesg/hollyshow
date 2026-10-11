@@ -14,6 +14,7 @@ pub mod playlist;
 pub mod protocol;
 pub mod reducer;
 pub mod song;
+pub mod split;
 pub mod state;
 pub mod text;
 pub mod theme;

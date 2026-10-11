@@ -24,6 +24,10 @@ pub enum CoreError {
     BibleNotResolved,
     #[error("unknown timer {0}")]
     UnknownTimer(String),
+    #[error("unknown output {0}")]
+    UnknownOutput(String),
+    #[error("service mode is on: unlock it to make this change")]
+    Locked,
     #[error("unsupported command: {0}")]
     Unsupported(String),
     #[error("internal error")]
@@ -44,6 +48,8 @@ impl CoreError {
             Self::NothingInPreview => "nothing_in_preview",
             Self::BibleNotResolved => "bible_not_resolved",
             Self::UnknownTimer(_) => "unknown_timer",
+            Self::UnknownOutput(_) => "unknown_output",
+            Self::Locked => "locked",
             Self::Unsupported(_) => "unsupported",
             Self::Internal => "internal",
             Self::Forbidden => "forbidden",
