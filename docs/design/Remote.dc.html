@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Remoto — Operador</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=Archivo:wght@600;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#F2B544}a:hover{color:#FFD27A}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #0F1115; color: #E8EAF0; font-family: 'Instrument Sans', system-ui, sans-serif; display: flex; flex-direction: column; box-sizing: border-box">
+
+  <div style="display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px">
+    <span style="width: 10px; height: 10px; border-radius: 50%; background: #2FA36B"></span>
+    <div style="display: flex; flex-direction: column; flex: 1; min-width: 0">
+      <span style="font-size: 15px; font-weight: 600">Santo, santo, santo</span>
+      <span style="font-size: 12px; color: #9AA3B2">Conectado · iglesia-pc · Operador</span>
+    </div>
+    <span style="font: 600 13px 'JetBrains Mono', monospace; color: #9AA3B2">10:11</span>
+  </div>
+
+  <div style="padding: 0 16px">
+    <div style="{{liveStyle}}">
+      <span style="position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 999px; background: #D13438; color: #FFFFFF; font: 700 11px 'Instrument Sans', sans-serif; letter-spacing: 1px">{{liveBadge}}</span>
+      <span style="white-space: pre-line">{{liveText}}</span>
+    </div>
+  </div>
+
+  <div style="flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+    <sc-for list="{{slides}}" as="s" hint-placeholder-count="6">
+      <button onClick="{{s.go}}" style="{{s.style}}">
+        <span style="{{s.keyStyle}}">{{s.key}}</span>
+        <span style="flex: 1; text-align: left; font-size: 14px; line-height: 1.35; white-space: pre-line">{{s.text}}</span>
+      </button>
+    </sc-for>
+  </div>
+
+  <div style="padding: 10px 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; border-top: 1px solid #2A2F3A">
+    <button onClick="{{toggleBlack}}" style="{{blackStyle}}">NEGRO</button>
+    <button style="height: 44px; border-radius: 10px; border: 1px solid #3A404D; background: #1F232C; color: #E8EAF0; font: 700 13px 'Instrument Sans', sans-serif; letter-spacing: 1px">LIMPIAR</button>
+    <button style="height: 44px; border-radius: 10px; border: 1px solid #3A404D; background: #1F232C; color: #E8EAF0; font: 700 13px 'Instrument Sans', sans-serif; letter-spacing: 1px">LOGO</button>
+  </div>
+
+  <div style="padding: 0 16px 10px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+    <button onClick="{{prev}}" aria-label="Slide anterior" style="height: 84px; border-radius: 16px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; display: flex; align-items: center; justify-content: center">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+    </button>
+    <button onClick="{{next}}" aria-label="Slide siguiente" style="height: 84px; border-radius: 16px; border: none; background: #F2B544; color: #1A1405; display: flex; align-items: center; justify-content: center">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
+    </button>
+  </div>
+
+  <nav aria-label="Secciones del remoto" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #2A2F3A; background: #12151B">
+    <span aria-current="page" style="height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #F2B544; font-size: 11px; font-weight: 600">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"></rect><path d="M8 21h8"></path></svg>Slides</span>
+    <span style="height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #9AA3B2; font-size: 11px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>Culto</span>
+    <a href="RemoteBible.dc.html" style="height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #9AA3B2; font-size: 11px; text-decoration: none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-5"></path><path d="M20 4v14h-6"></path></svg>Biblia</a>
+    <span style="height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #9AA3B2; font-size: 11px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"></path></svg>Mensajes</span>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { live: 1, black: false };
+  }
+  renderVals() {
+    const raw = [
+      { key: 'V1', text: '¡Santo! ¡Santo! ¡Santo! Señor omnipotente,\nsiempre el labio mío loores te dará' },
+      { key: 'V1', text: '¡Santo! ¡Santo! ¡Santo! te adoro reverente,\nDios en tres personas, bendita Trinidad' },
+      { key: 'V2', text: '¡Santo! ¡Santo! ¡Santo! en numeroso coro,\nsantos escogidos te adoran sin cesar' },
+      { key: 'V2', text: 'de alegría llenos, y sus coronas de oro\nrinden ante el trono y el cristalino mar' },
+      { key: 'V3', text: '¡Santo! ¡Santo! ¡Santo! la inmensa muchedumbre\nde ángeles que cumplen tu santa voluntad' },
+      { key: 'V3', text: 'ante ti se postra bañada de tu lumbre,\nante ti que has sido, que eres y serás' },
+      { key: 'F', text: 'Dios en tres personas,\nbendita Trinidad' }
+    ];
+    const live = this.state.live;
+    const black = this.state.black;
+    const slides = raw.map((s, i) => ({
+      ...s,
+      go: () => this.setState({ live: i }),
+      style: 'display: flex; align-items: flex-start; gap: 10px; min-height: 56px; padding: 10px 12px; border-radius: 12px; color: #E8EAF0; font-family: inherit; cursor: pointer; ' + (i === live ? 'background: #2A1416; border: 2px solid #FF6369' : i === live + 1 ? 'background: #171A21; border: 2px solid #5B9BFF' : 'background: #171A21; border: 1px solid #2A2F3A'),
+      keyStyle: 'min-width: 30px; font: 700 12px \'JetBrains Mono\', monospace; padding-top: 2px; ' + (i === live ? 'color: #FF8A8E' : i === live + 1 ? 'color: #8DB8FF' : 'color: #9AA3B2')
+    }));
+    return {
+      slides,
+      liveText: black ? '' : raw[live].text,
+      liveBadge: black ? 'NEGRO' : '● EN VIVO',
+      liveStyle: 'position: relative; aspect-ratio: 16 / 9; border-radius: 12px; border: 2px solid #FF6369; display: flex; align-items: center; justify-content: center; text-align: center; padding: 18px; box-sizing: border-box; font-family: Archivo, sans-serif; font-weight: 800; font-size: 15px; line-height: 1.3; color: #FFFFFF; background: ' + (black ? '#000000' : '#0B1A2E'),
+      blackStyle: 'height: 44px; border-radius: 10px; font: 700 13px \'Instrument Sans\', sans-serif; letter-spacing: 1px; ' + (black ? 'border: 2px solid #FF6369; background: #000000; color: #FF8A8E' : 'border: 1px solid #3A404D; background: #000000; color: #E8EAF0'),
+      toggleBlack: () => this.setState({ black: !black }),
+      prev: () => this.setState({ live: Math.max(0, live - 1) }),
+      next: () => this.setState({ live: Math.min(raw.length - 1, live + 1) })
+    };
+  }
+}
+</script>
+</body>
+</html>

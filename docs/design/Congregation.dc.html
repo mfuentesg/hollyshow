@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Congregación — Sigue en tu celular</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&amp;family=Archivo:wght@600;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#B07A12}a:hover{color:#8A5E0B}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; background: {{bg}}; color: {{fg}}; font-family: 'Instrument Sans', system-ui, sans-serif; display: flex; flex-direction: column; box-sizing: border-box">
+
+  <div style="display: flex; align-items: center; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid {{line}}">
+    <svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#F2B544"></rect><path d="M20 9c3 4 5 6.5 5 10a5 5 0 0 1-10 0c0-3.5 2-6 5-10z" fill="#1A1405"></path><path d="M12 30h16" stroke="#1A1405" stroke-width="2.5" stroke-linecap="round"></path></svg>
+    <div style="display: flex; flex-direction: column; flex: 1">
+      <span style="font-size: 15px; font-weight: 600">[Nombre de la iglesia]</span>
+      <span style="font-size: 12px; color: {{muted}}">En vivo · sigue el culto</span>
+    </div>
+    <button aria-label="Reducir texto" style="width: 44px; height: 44px; border-radius: 10px; border: 1px solid {{line}}; background: transparent; color: {{fg}}; font: 600 14px 'Instrument Sans', sans-serif">A−</button>
+    <button aria-label="Agrandar texto" style="width: 44px; height: 44px; border-radius: 10px; border: 1px solid {{line}}; background: transparent; color: {{fg}}; font: 700 18px 'Instrument Sans', sans-serif">A+</button>
+  </div>
+
+  <div style="flex: 1; overflow-y: auto; padding: 20px 20px; display: flex; flex-direction: column; gap: 22px">
+    <span style="font-size: 13px; color: {{muted}}">Santo, santo, santo · Verso 1</span>
+    <p style="margin: 0; font-family: Archivo, sans-serif; font-weight: 600; font-size: 22px; line-height: 1.4; color: {{muted}}">¡Santo! ¡Santo! ¡Santo! Señor omnipotente, siempre el labio mío loores te dará;</p>
+    <p style="margin: 0; font-family: Archivo, sans-serif; font-weight: 800; font-size: 28px; line-height: 1.35">¡Santo! ¡Santo! ¡Santo! te adoro reverente, Dios en tres personas, bendita Trinidad.</p>
+    <sc-if value="{{showTranslation}}" hint-placeholder-val="{{ true }}">
+      <p lang="en" style="margin: 0; font-size: 18px; line-height: 1.45; color: {{muted}}; font-style: italic">Holy, holy, holy! Merciful and mighty! God in three Persons, blessed Trinity!</p>
+    </sc-if>
+  </div>
+
+  <div style="padding: 12px 16px 20px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid {{line}}">
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: {{muted}}">Idioma
+        <select style="height: 44px; border-radius: 10px; border: 1px solid {{line}}; background: {{bg}}; color: {{fg}}; font: 500 15px 'Instrument Sans', sans-serif; padding: 0 10px">
+          <option>Español + English</option>
+          <option>Español</option>
+          <option>English</option>
+        </select>
+      </label>
+      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: {{muted}}">Versión bíblica
+        <select style="height: 44px; border-radius: 10px; border: 1px solid {{line}}; background: {{bg}}; color: {{fg}}; font: 500 15px 'JetBrains Mono', monospace; padding: 0 10px">
+          <option>RVR1909</option>
+          <option>KJV</option>
+          <option>RVA</option>
+        </select>
+      </label>
+    </div>
+    <button style="height: 48px; border-radius: 12px; border: 1px solid {{line}}; background: transparent; color: {{fg}}; font: 600 15px 'Instrument Sans', sans-serif">Enviar petición de oración</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"light":{"editor":"boolean","default":false},"translation":{"editor":"boolean","default":true},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const light = this.props.light ?? false;
+    return {
+      bg: light ? '#FBFAF7' : '#0F1115',
+      fg: light ? '#16181D' : '#E8EAF0',
+      muted: light ? '#5A6170' : '#9AA3B2',
+      line: light ? '#DAD7CF' : '#2A2F3A',
+      showTranslation: this.props.translation ?? true
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Operador — Biblia multiversión</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=Archivo:wght@600;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1115}
+a{color:#F2B544}a:hover{color:#FFD27A}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #0F1115; color: #E8EAF0; font-family: 'Instrument Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid #2A2F3A; background: #12151B">
+    <nav aria-label="Secciones" style="display: flex; flex-wrap: wrap; gap: 4px">
+      <a href="Operator.dc.html" style="height: 36px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 8px; color: #9AA3B2; text-decoration: none; font-size: 14px">Culto</a>
+      <a href="SongEditor.dc.html" style="height: 36px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 8px; color: #9AA3B2; text-decoration: none; font-size: 14px">Canciones</a>
+      <span aria-current="page" style="height: 36px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 8px; background: #1F232C; color: #E8EAF0; font-size: 14px; font-weight: 600">Biblia</span>
+      <span style="height: 36px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 8px; color: #9AA3B2; font-size: 14px">Medios</span>
+      <span style="height: 36px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 8px; color: #9AA3B2; font-size: 14px">Temas</span>
+    </nav>
+    <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #D13438; color: #FFFFFF; font-size: 12px; font-weight: 700; letter-spacing: 1px">● EN VIVO: Santo, santo, santo · V1</span>
+  </header>
+
+  <div style="flex: 1; display: flex; flex-wrap: wrap">
+
+    <aside style="flex: 1 1 280px; max-width: 340px; min-width: 0; border-right: 1px solid #2A2F3A; padding: 16px; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box">
+      <label style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; color: #9AA3B2">Referencia</span>
+        <span style="display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 14px; border-radius: 10px; background: #0F1115; border: 1px solid #F2B544">
+          <input value="jn 3 16-18" aria-label="Referencia bíblica" style="flex: 1; min-width: 0; background: transparent; border: none; color: #E8EAF0; font: 600 20px 'JetBrains Mono', monospace; outline: none">
+        </span>
+        <span style="font-size: 13px; color: #9AA3B2">→ <b style="color: #E8EAF0">Juan 3:16–18</b> · 3 versículos</span>
+      </label>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; color: #9AA3B2">Versiones en pantalla (máx. 4)</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #F2B544; background: #3A2C10; color: #FFD27A; font: 600 13px 'JetBrains Mono', monospace">1 · RVR1909</button>
+          <button style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #F2B544; background: #3A2C10; color: #FFD27A; font: 600 13px 'JetBrains Mono', monospace">2 · KJV</button>
+          <button style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; font: 600 13px 'JetBrains Mono', monospace">RVA</button>
+          <button style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; font: 600 13px 'JetBrains Mono', monospace">ACF</button>
+          <button style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px dashed #3A404D; background: transparent; color: #9AA3B2; font: 500 13px 'Instrument Sans', sans-serif">+ Importar…</button>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; color: #9AA3B2">Juan · capítulos</span>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px">
+          <sc-for list="{{chapters}}" as="c" hint-placeholder-count="21">
+            <button style="{{c.style}}">{{c.n}}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; color: #9AA3B2">Historial</span>
+        <div style="display: flex; justify-content: space-between; font-size: 14px; padding: 8px 10px; border-radius: 8px; background: #171A21"><span style="font-family: 'JetBrains Mono', monospace">Sal 23:1-4</span><span style="color: #9AA3B2">09:58</span></div>
+        <div style="display: flex; justify-content: space-between; font-size: 14px; padding: 8px 10px; border-radius: 8px; background: #171A21"><span style="font-family: 'JetBrains Mono', monospace">Ro 8:28</span><span style="color: #9AA3B2">sugerido por voz</span></div>
+      </div>
+    </aside>
+
+    <main style="flex: 999 1 560px; min-width: 0; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <h1 style="margin: 0; font-size: 22px; font-weight: 600">Juan 3</h1>
+        <span style="font-size: 13px; color: #9AA3B2">Clic = seleccionar · Shift+clic = rango · Enter = preview</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 48px minmax(0, 1fr) minmax(0, 1fr); gap: 0; border: 1px solid #2A2F3A; border-radius: 12px; overflow: hidden">
+        <div style="padding: 10px; background: #171A21; border-bottom: 1px solid #2A2F3A"></div>
+        <div style="padding: 10px 14px; background: #171A21; border-bottom: 1px solid #2A2F3A; font: 600 13px 'JetBrains Mono', monospace; color: #FFD27A">RVR1909 · Reina-Valera 1909</div>
+        <div style="padding: 10px 14px; background: #171A21; border-bottom: 1px solid #2A2F3A; border-left: 1px solid #2A2F3A; font: 600 13px 'JetBrains Mono', monospace; color: #FFD27A">KJV · King James Version</div>
+        <sc-for list="{{verses}}" as="v" hint-placeholder-count="5">
+          <div style="{{v.numStyle}}">{{v.n}}</div>
+          <div style="{{v.cellStyle}}">{{v.es}}</div>
+          <div style="{{v.cellStyleR}}">{{v.en}}</div>
+        </sc-for>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #9AA3B2; line-height: 1.5">Las versiones se alinean por versificación canónica. Si un versículo no existe en una versión (p. ej. Hch 8:37), se muestra «— no incluido en esta versión —».</p>
+    </main>
+
+    <aside style="flex: 1 1 380px; max-width: 460px; min-width: 0; border-left: 1px solid #2A2F3A; padding: 16px; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; background: #12151B">
+      <div style="display: flex; justify-content: space-between; align-items: center"><span style="font-size: 12px; font-weight: 700; letter-spacing: 1px; color: #8DB8FF">PREVIEW · 1 de 2</span><span style="font-size: 12px; color: #9AA3B2">Jn 3:16</span></div>
+      <div style="aspect-ratio: 16 / 9; border-radius: 10px; border: 2px solid #5B9BFF; background: #10151F; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 18px; box-sizing: border-box">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+          <div style="font-family: Archivo, sans-serif; font-weight: 600; font-size: 12px; line-height: 1.35; color: #FFFFFF">Porque de tal manera amó Dios al mundo, que haya dado á su Hijo unigénito, para que todo aquel que en él cree, no se pierda, mas tenga vida eterna.</div>
+          <div style="font-family: Archivo, sans-serif; font-weight: 600; font-size: 12px; line-height: 1.35; color: #C9D6EA">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font: 600 10px 'JetBrains Mono', monospace; color: #F2B544"><span>Juan 3:16 · RVR1909</span><span>John 3:16 · KJV</span></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; color: #9AA3B2">Diseño en pantalla</span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <button style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border-radius: 10px; border: 1px solid #F2B544; background: #3A2C10; color: #FFD27A; font: 600 12px 'Instrument Sans', sans-serif">
+            <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1" y="1" width="38" height="22" rx="3"></rect><path d="M20 4v16M5 8h11M5 12h11M24 8h11M24 12h11"></path></svg>Lado a lado</button>
+          <button style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border-radius: 10px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; font: 500 12px 'Instrument Sans', sans-serif">
+            <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1" y="1" width="38" height="22" rx="3"></rect><path d="M4 12h32M8 6h24M8 17h24"></path></svg>Apilado</button>
+          <button style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border-radius: 10px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; font: 500 12px 'Instrument Sans', sans-serif">
+            <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1" y="1" width="38" height="22" rx="3"></rect><path d="M6 8h28M6 12h28M12 19h16"></path></svg>Subtítulo</button>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; color: #9AA3B2">Opciones</span>
+        <label style="display: flex; justify-content: space-between; align-items: center; min-height: 40px; font-size: 14px"><span>Un versículo por slide</span><input type="checkbox" checked aria-label="Un versículo por slide" style="width: 20px; height: 20px; accent-color: #F2B544"></label>
+        <label style="display: flex; justify-content: space-between; align-items: center; min-height: 40px; font-size: 14px"><span>Palabras de Jesús en rojo</span><input type="checkbox" aria-label="Palabras de Jesús en rojo" style="width: 20px; height: 20px; accent-color: #F2B544"></label>
+        <label style="display: flex; justify-content: space-between; align-items: center; min-height: 40px; font-size: 14px"><span>Mostrar copyright de la versión</span><input type="checkbox" checked aria-label="Mostrar copyright de la versión" style="width: 20px; height: 20px; accent-color: #F2B544"></label>
+      </div>
+
+      <div style="margin-top: auto; display: flex; gap: 8px">
+        <button style="flex: 1; height: 48px; border-radius: 10px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; font: 600 14px 'Instrument Sans', sans-serif">Agregar al culto</button>
+        <button style="flex: 1; height: 48px; border-radius: 10px; border: none; background: #F2B544; color: #1A1405; font: 600 14px 'Instrument Sans', sans-serif">Mostrar en vivo</button>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const chapters = Array.from({ length: 21 }, (_, i) => ({
+      n: i + 1,
+      style: 'height: 36px; border-radius: 8px; font: 600 13px \'JetBrains Mono\', monospace; ' + (i === 2 ? 'border: 1px solid #F2B544; background: #3A2C10; color: #FFD27A' : 'border: 1px solid #2A2F3A; background: #171A21; color: #E8EAF0')
+    }));
+    const raw = [
+      { n: 15, es: 'Para que todo aquel que en él creyere, no se pierda, sino que tenga vida eterna.', en: 'That whosoever believeth in him should not perish, but have eternal life.' },
+      { n: 16, es: 'Porque de tal manera amó Dios al mundo, que haya dado á su Hijo unigénito, para que todo aquel que en él cree, no se pierda, mas tenga vida eterna.', en: 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.', sel: true },
+      { n: 17, es: 'Porque no envió Dios á su Hijo al mundo, para que condene al mundo, mas para que el mundo sea salvo por él.', en: 'For God sent not his Son into the world to condemn the world; but that the world through him might be saved.', sel: true },
+      { n: 18, es: 'El que en él cree, no es condenado; mas el que no cree, ya es condenado, porque no creyó en el nombre del unigénito Hijo de Dios.', en: 'He that believeth on him is not condemned: but he that believeth not is condemned already, because he hath not believed in the name of the only begotten Son of God.', sel: true }
+    ];
+    const verses = raw.map((v) => {
+      const bg = v.sel ? 'background: #172338;' : '';
+      const cell = 'padding: 12px 14px; font-size: 15px; line-height: 1.55; border-bottom: 1px solid #2A2F3A; ' + bg;
+      return {
+        ...v,
+        numStyle: 'padding: 12px 0; text-align: center; font: 600 13px \'JetBrains Mono\', monospace; border-bottom: 1px solid #2A2F3A; ' + (v.sel ? 'background: #172338; color: #8DB8FF; box-shadow: inset 3px 0 0 #5B9BFF' : 'color: #9AA3B2'),
+        cellStyle: cell,
+        cellStyleR: cell + ' border-left: 1px solid #2A2F3A; color: #C9D6EA'
+      };
+    });
+    return { chapters, verses };
+  }
+}
+</script>
+</body>
+</html>

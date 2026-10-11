@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Salida — Letra</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#F2B544}a:hover{color:#FFD27A}
+</style>
+</helmet>
+<div style="width: 1280px; height: 720px; position: relative; overflow: hidden; background: {{bg}}; font-family: Archivo, sans-serif; color: #FFFFFF">
+  <svg width="1280" height="720" viewBox="0 0 1280 720" aria-hidden="true" style="position: absolute; inset: 0">
+    <circle cx="1040" cy="120" r="420" fill="none" stroke="#FFFFFF" stroke-opacity="0.05" stroke-width="2"></circle>
+    <circle cx="1040" cy="120" r="300" fill="none" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="2"></circle>
+    <circle cx="1040" cy="120" r="180" fill="none" stroke="#F2B544" stroke-opacity="0.12" stroke-width="2"></circle>
+    <circle cx="200" cy="700" r="360" fill="none" stroke="#FFFFFF" stroke-opacity="0.04" stroke-width="2"></circle>
+  </svg>
+  <div style="position: absolute; inset: 72px 96px; display: flex; align-items: center; justify-content: center; text-align: center">
+    <div style="font-weight: 800; font-size: {{size}}px; line-height: 1.22; letter-spacing: -0.5px; text-shadow: 0 2px 12px rgba(0,0,0,0.55); text-transform: {{transform}}; white-space: pre-line">¡Santo! ¡Santo! ¡Santo! te adoro reverente,
+Dios en tres personas, bendita Trinidad</div>
+  </div>
+  <div style="position: absolute; left: 96px; right: 96px; bottom: 28px; display: flex; justify-content: space-between; font: 400 14px 'JetBrains Mono', monospace; color: rgba(255,255,255,0.7)">
+    <span>Santo, santo, santo — R. Heber, trad. J. B. Cabrera · Dominio público</span>
+    <span>V1 · 2/2</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"bg":{"editor":"color","default":"#0B1A2E","options":["#0B1A2E","#14110C","#0F1115","#1B1030"]},"size":{"editor":"range","default":56,"min":32,"max":88,"step":2,"unit":"px"},"upper":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      bg: this.props.bg ?? '#0B1A2E',
+      size: this.props.size ?? 56,
+      transform: (this.props.upper ?? false) ? 'uppercase' : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>

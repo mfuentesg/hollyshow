@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Salida — Biblia en paralelo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#F2B544}a:hover{color:#FFD27A}
+</style>
+</helmet>
+<div style="width: 1280px; height: 720px; position: relative; overflow: hidden; background: #10151F; font-family: Archivo, sans-serif; color: #FFFFFF; box-sizing: border-box; padding: 72px 88px; display: flex; flex-direction: column; justify-content: center; gap: 36px">
+  <div style="display: flex; align-items: center; gap: 16px">
+    <span style="width: 48px; height: 4px; border-radius: 2px; background: #F2B544"></span>
+    <span style="font-weight: 800; font-size: 30px; letter-spacing: 0.5px">Juan 3:16</span>
+  </div>
+  <sc-if value="{{sideBySide}}" hint-placeholder-val="{{ true }}">
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 56px">
+      <div style="display: flex; flex-direction: column; gap: 18px">
+        <div style="font-weight: 600; font-size: 38px; line-height: 1.32">Porque de tal manera amó Dios al mundo, que haya dado á su Hijo unigénito, para que todo aquel que en él cree, no se pierda, mas tenga vida eterna.</div>
+        <div style="font: 600 16px 'JetBrains Mono', monospace; color: #F2B544">RVR1909</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 18px; border-left: 2px solid rgba(255,255,255,0.12); padding-left: 56px">
+        <div style="font-weight: 600; font-size: 38px; line-height: 1.32; color: #C9D6EA">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.</div>
+        <div style="font: 600 16px 'JetBrains Mono', monospace; color: #F2B544">KJV</div>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{stacked}}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-direction: column; gap: 28px">
+      <div style="font-weight: 600; font-size: 42px; line-height: 1.3">Porque de tal manera amó Dios al mundo, que haya dado á su Hijo unigénito, para que todo aquel que en él cree, no se pierda, mas tenga vida eterna.</div>
+      <div style="font-weight: 600; font-size: 26px; line-height: 1.35; color: #C9D6EA; border-top: 2px solid rgba(255,255,255,0.12); padding-top: 24px">For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life. <span style="font: 600 14px 'JetBrains Mono', monospace; color: #F2B544">KJV</span></div>
+    </div>
+  </sc-if>
+  <div style="position: absolute; left: 88px; right: 88px; bottom: 28px; display: flex; justify-content: space-between; font: 400 14px 'JetBrains Mono', monospace; color: rgba(255,255,255,0.65)">
+    <span>Reina-Valera 1909 · King James Version — dominio público</span>
+    <span>1/3</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"layout":{"editor":"enum","default":"lado a lado","options":["lado a lado","apilado"]},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const layout = this.props.layout ?? 'lado a lado';
+    return { sideBySide: layout === 'lado a lado', stacked: layout === 'apilado' };
+  }
+}
+</script>
+</body>
+</html>

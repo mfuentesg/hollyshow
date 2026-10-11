@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Stage display</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&amp;family=Archivo:wght@600;800&amp;family=JetBrains+Mono:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#F2B544}a:hover{color:#FFD27A}
+</style>
+</helmet>
+<div style="width: 1280px; height: 720px; background: #000000; color: #FFFFFF; font-family: 'Instrument Sans', sans-serif; box-sizing: border-box; padding: 28px 36px; display: flex; flex-direction: column; gap: 20px">
+
+  <div style="display: flex; align-items: center; gap: 24px">
+    <span style="font: 700 44px 'JetBrains Mono', monospace">10:11</span>
+    <div style="display: flex; flex-direction: column">
+      <span style="font-size: 14px; color: #9AA3B2">Canción · Santo, santo, santo</span>
+      <span style="font: 700 22px 'JetBrains Mono', monospace; color: #2FA36B">Quedan 3:12</span>
+    </div>
+    <div style="margin-left: auto; display: flex; gap: 8px">
+      <sc-for list="{{arr}}" as="a" hint-placeholder-count="5">
+        <span style="{{a.style}}">{{a.k}}</span>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-radius: 12px; background: #F2B544; color: #1A1405; font-weight: 700; font-size: 24px">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1A1405" stroke-width="2.2" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"></path></svg>
+    Repetir verso 1 al final
+  </div>
+
+  <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px">
+    <span style="font-size: 16px; font-weight: 700; letter-spacing: 1.5px; color: #FF8A8E">● ACTUAL · V1</span>
+    <div style="font-family: Archivo, sans-serif; font-weight: 800; font-size: 50px; line-height: 1.15">
+      <sc-if value="{{chords}}" hint-placeholder-val="{{ true }}"><div style="font: 700 26px 'JetBrains Mono', monospace; color: #F2B544; white-space: pre">D          G     D      A</div></sc-if>
+      <div>¡Santo! ¡Santo! ¡Santo! te adoro reverente,</div>
+      <sc-if value="{{chords}}" hint-placeholder-val="{{ true }}"><div style="font: 700 26px 'JetBrains Mono', monospace; color: #F2B544; white-space: pre">D       G       D   A    D</div></sc-if>
+      <div>Dios en tres personas, bendita Trinidad</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #2A2F3A; padding-top: 16px">
+    <span style="font-size: 14px; font-weight: 700; letter-spacing: 1.5px; color: #8DB8FF">SIGUIENTE · V2</span>
+    <div style="font-family: Archivo, sans-serif; font-weight: 600; font-size: 28px; line-height: 1.25; color: #B8C2D3">¡Santo! ¡Santo! ¡Santo! en numeroso coro, santos escogidos te adoran sin cesar</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"chords":{"editor":"boolean","default":true},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const keys = ['V1', 'V2', 'V3', 'V1', 'F'];
+    const arr = keys.map((k, i) => ({
+      k,
+      style: 'min-width: 48px; height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border-radius: 8px; font: 700 18px \'JetBrains Mono\', monospace; ' + (i === 0 ? 'background: #D13438; color: #FFFFFF' : i === 1 ? 'border: 2px solid #5B9BFF; color: #8DB8FF' : 'border: 1px solid #3A404D; color: #9AA3B2')
+    }));
+    return { arr, chords: this.props.chords ?? true };
+  }
+}
+</script>
+</body>
+</html>

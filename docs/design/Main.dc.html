@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>HollyShow — Fundamentos</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=Archivo:wght@600;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#F2B544}a:hover{color:#FFD27A}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1180px; box-sizing: border-box; padding: 64px; background: #0F1115; color: #E8EAF0; font-family: 'Instrument Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 48px">
+
+  <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 32px">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: center; gap: 14px">
+        <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#F2B544"></rect><path d="M20 9c3 4 5 6.5 5 10a5 5 0 0 1-10 0c0-3.5 2-6 5-10z" fill="#1A1405"></path><path d="M12 30h16" stroke="#1A1405" stroke-width="2.5" stroke-linecap="round"></path></svg>
+        <span style="font-family: Archivo, sans-serif; font-weight: 800; font-size: 32px; letter-spacing: -0.5px">HollyShow</span>
+      </div>
+      <h1 style="margin: 0; font-size: 44px; font-weight: 600; letter-spacing: -0.8px; line-height: 1.1">Sistema de diseño · «Cabina nocturna»</h1>
+      <p style="margin: 0; font-size: 18px; color: #9AA3B2; max-width: 820px; line-height: 1.5">UI oscura para no encandilar en el santuario, una sola luz cálida (ámbar) como marca, y colores semánticos inconfundibles para lo que está en vivo. Todo legible a 2 metros y operable con teclado, pedal o celular.</p>
+    </div>
+    <div style="display: flex; gap: 10px">
+      <span style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: #D13438; color: #FFFFFF; font-weight: 700; font-size: 14px; letter-spacing: 1px">● EN VIVO</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: #2563D9; color: #FFFFFF; font-weight: 700; font-size: 14px; letter-spacing: 1px">PREVIEW</span>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px">
+
+    <section style="display: flex; flex-direction: column; gap: 20px">
+      <h2 style="margin: 0; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #9AA3B2; font-weight: 600">Color</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+        <div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 12px; background: #0F1115; border: 1px solid #2A2F3A"></div><div style="font-size: 14px; font-weight: 600">Fondo</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3B2">#0F1115</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 12px; background: #171A21; border: 1px solid #2A2F3A"></div><div style="font-size: 14px; font-weight: 600">Superficie</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3B2">#171A21</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 12px; background: #1F232C; border: 1px solid #2A2F3A"></div><div style="font-size: 14px; font-weight: 600">Elevada</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3B2">#1F232C</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 12px; background: #2A2F3A"></div><div style="font-size: 14px; font-weight: 600">Borde</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3B2">#2A2F3A</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 12px; background: #F2B544"></div><div style="font-size: 14px; font-weight: 600">Ámbar · marca</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3B2">#F2B544</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 12px; background: #D13438"></div><div style="font-size: 14px; font-weight: 600">En vivo</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3B2">#D13438 · borde #FF6369</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 12px; background: #2563D9"></div><div style="font-size: 14px; font-weight: 600">Preview</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3B2">#2563D9 · borde #5B9BFF</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 12px; background: #2FA36B"></div><div style="font-size: 14px; font-weight: 600">Conectado / OK</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3B2">#2FA36B</div></div>
+      </div>
+      <p style="margin: 0; font-size: 14px; color: #9AA3B2; line-height: 1.5">Texto principal #E8EAF0, secundario #9AA3B2 (6,8:1 sobre superficie). Vivo y preview difieren en tono <b style="color: #E8EAF0">y</b> en etiqueta: nunca sólo por color.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 20px">
+      <h2 style="margin: 0; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #9AA3B2; font-weight: 600">Tipografía</h2>
+      <div style="display: flex; flex-direction: column; gap: 16px; background: #171A21; border: 1px solid #2A2F3A; border-radius: 16px; padding: 24px">
+        <div style="display: flex; align-items: baseline; gap: 20px"><span style="width: 150px; font-size: 12px; color: #9AA3B2">UI · Instrument Sans</span><span style="font-size: 28px; font-weight: 600">Domingo 12 · Culto principal</span></div>
+        <div style="display: flex; align-items: baseline; gap: 20px"><span style="width: 150px; font-size: 12px; color: #9AA3B2">Cuerpo 15/14</span><span style="font-size: 15px">Santo, santo, santo · Verso 2 · 4 líneas</span></div>
+        <div style="display: flex; align-items: baseline; gap: 20px"><span style="width: 150px; font-size: 12px; color: #9AA3B2">Datos · JetBrains Mono</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 18px">Jn 3:16-18 · RVR1909 · 04:32</span></div>
+        <div style="display: flex; align-items: baseline; gap: 20px"><span style="width: 150px; font-size: 12px; color: #9AA3B2">Proyección · Archivo</span><span style="font-family: Archivo, sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.3px">Santo, santo, santo</span></div>
+      </div>
+      <p style="margin: 0; font-size: 14px; color: #9AA3B2; line-height: 1.5">La UI usa 3 familias libres (OFL) incluidas en la app. Los temas de proyección pueden usar cualquier fuente instalada.</p>
+    </section>
+  </div>
+
+  <section style="display: flex; flex-direction: column; gap: 20px">
+    <h2 style="margin: 0; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #9AA3B2; font-weight: 600">Componentes</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+
+      <div style="display: flex; flex-direction: column; gap: 14px; background: #171A21; border: 1px solid #2A2F3A; border-radius: 16px; padding: 24px">
+        <div style="font-size: 13px; color: #9AA3B2">Botones</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px">
+          <button style="height: 44px; padding: 0 18px; border-radius: 10px; border: none; background: #F2B544; color: #1A1405; font: 600 15px 'Instrument Sans', sans-serif">Mostrar en vivo</button>
+          <button style="height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; font: 600 15px 'Instrument Sans', sans-serif">A preview</button>
+          <button style="height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #E8EAF0; font: 500 15px 'Instrument Sans', sans-serif">Cancelar</button>
+        </div>
+        <div style="font-size: 13px; color: #9AA3B2">Pánico (siempre visibles)</div>
+        <div style="display: flex; gap: 10px">
+          <button style="flex: 1; height: 52px; border-radius: 10px; border: 1px solid #3A404D; background: #000000; color: #E8EAF0; font: 700 14px 'Instrument Sans', sans-serif; letter-spacing: 1px">NEGRO</button>
+          <button style="flex: 1; height: 52px; border-radius: 10px; border: 1px solid #3A404D; background: #1F232C; color: #E8EAF0; font: 700 14px 'Instrument Sans', sans-serif; letter-spacing: 1px">LIMPIAR</button>
+          <button style="flex: 1; height: 52px; border-radius: 10px; border: 1px solid #3A404D; background: #1F232C; color: #E8EAF0; font: 700 14px 'Instrument Sans', sans-serif; letter-spacing: 1px">LOGO</button>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; background: #171A21; border: 1px solid #2A2F3A; border-radius: 16px; padding: 24px">
+        <div style="font-size: 13px; color: #9AA3B2">Miniaturas de slide</div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="aspect-ratio: 16 / 9; border-radius: 8px; background: #0B1A2E; outline: 3px solid #FF6369; outline-offset: 2px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px; box-sizing: border-box; font-family: Archivo, sans-serif; font-weight: 800; font-size: 11px; color: #FFFFFF">¡Santo! ¡Santo! ¡Santo!<br>te adoro reverente</div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px"><span style="color: #FF8A8E; font-weight: 700">● VIVO</span><span style="color: #9AA3B2">Verso 1</span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="aspect-ratio: 16 / 9; border-radius: 8px; background: #0B1A2E; outline: 3px solid #5B9BFF; outline-offset: 2px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px; box-sizing: border-box; font-family: Archivo, sans-serif; font-weight: 800; font-size: 11px; color: #FFFFFF">en numeroso coro<br>santos escogidos</div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px"><span style="color: #8DB8FF; font-weight: 700">PREVIEW</span><span style="color: #9AA3B2">Verso 2</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; background: #171A21; border: 1px solid #2A2F3A; border-radius: 16px; padding: 24px">
+        <div style="font-size: 13px; color: #9AA3B2">Búsqueda universal · Cmd/Ctrl + K</div>
+        <label style="display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 14px; border-radius: 10px; background: #0F1115; border: 1px solid #F2B544">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9AA3B2" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+          <input value="jn 3 16" aria-label="Buscar canción, versículo o acción" style="flex: 1; background: transparent; border: none; color: #E8EAF0; font: 500 16px 'JetBrains Mono', monospace; outline: none">
+          <span style="font-size: 12px; color: #9AA3B2; border: 1px solid #2A2F3A; border-radius: 6px; padding: 2px 6px">⌘K</span>
+        </label>
+        <div style="font-size: 13px; color: #9AA3B2">Chips de versión (multiselección)</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #F2B544; background: #3A2C10; color: #FFD27A; font: 600 13px 'JetBrains Mono', monospace">RVR1909 ✓</button>
+          <button style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #F2B544; background: #3A2C10; color: #FFD27A; font: 600 13px 'JetBrains Mono', monospace">KJV ✓</button>
+          <button style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; font: 600 13px 'JetBrains Mono', monospace">RVA</button>
+          <button style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #2A2F3A; background: #1F232C; color: #E8EAF0; font: 600 13px 'JetBrains Mono', monospace">ARC</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; border-top: 1px solid #2A2F3A; padding-top: 32px">
+    <div style="display: flex; flex-direction: column; gap: 6px"><div style="font-weight: 600; font-size: 16px">Lo vivo siempre a la vista</div><div style="font-size: 14px; color: #9AA3B2; line-height: 1.5">Monitor de salida real en la esquina; borde rojo + etiqueta.</div></div>
+    <div style="display: flex; flex-direction: column; gap: 6px"><div style="font-weight: 600; font-size: 16px">Un error no sale a pantalla</div><div style="font-size: 14px; color: #9AA3B2; line-height: 1.5">Todo pasa por preview salvo acción explícita «Mostrar en vivo».</div></div>
+    <div style="display: flex; flex-direction: column; gap: 6px"><div style="font-weight: 600; font-size: 16px">Teclado primero</div><div style="font-size: 14px; color: #9AA3B2; line-height: 1.5">Flechas, espacio, letras de sección (C = coro), B = negro.</div></div>
+    <div style="display: flex; flex-direction: column; gap: 6px"><div style="font-weight: 600; font-size: 16px">Toques de 44 px+</div><div style="font-size: 14px; color: #9AA3B2; line-height: 1.5">El remoto se usa de pie, a oscuras y con una mano.</div></div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

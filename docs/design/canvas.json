@@ -1,0 +1,37 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-10-11T15:00:00Z"},
+  "title": "HollyShow — Diseño de la app",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 1180, "title": "Sistema de diseño — Fundamentos"},
+    "Operator.dc.html": {"x": 0, "y": 1600, "w": 1440, "h": 900, "title": "Operador — Culto en vivo", "expand": "fill"},
+    "Bible.dc.html": {"x": 1520, "y": 1600, "w": 1440, "h": 900, "title": "Operador — Biblia multiversión", "expand": "fill"},
+    "SongEditor.dc.html": {"x": 3040, "y": 1600, "w": 1440, "h": 900, "title": "Operador — Editor de canción", "expand": "fill"},
+    "OutputLyrics.dc.html": {"x": 0, "y": 2900, "w": 1280, "h": 720, "title": "Salida — Letra"},
+    "OutputBible.dc.html": {"x": 1360, "y": 2900, "w": 1280, "h": 720, "title": "Salida — Biblia en paralelo"},
+    "Stage.dc.html": {"x": 2720, "y": 2900, "w": 1280, "h": 720, "title": "Stage display (escenario)"},
+    "Remote.dc.html": {"x": 0, "y": 4020, "w": 390, "h": 844, "title": "Remoto — Operador", "is_interactive": true},
+    "RemoteBible.dc.html": {"x": 470, "y": 4020, "w": 390, "h": 844, "title": "Remoto — Biblia (rol Pastor)"},
+    "Congregation.dc.html": {"x": 940, "y": 4020, "w": 390, "h": 844, "title": "Congregación — Sigue en tu celular"}
+  },
+  "order": [
+    "Main.dc.html",
+    "Operator.dc.html",
+    "Bible.dc.html",
+    "SongEditor.dc.html",
+    "OutputLyrics.dc.html",
+    "OutputBible.dc.html",
+    "Stage.dc.html",
+    "Remote.dc.html",
+    "RemoteBible.dc.html",
+    "Congregation.dc.html"
+  ],
+  "notes": {
+    "t_found": {"x": 0, "y": -300, "text": "Fundamentos", "kind": "title1", "maxW": 1440},
+    "t_desk": {"x": 0, "y": 1300, "text": "Escritorio — ventana del operador", "kind": "title1", "maxW": 4480},
+    "t_out": {"x": 0, "y": 2600, "text": "Salidas — proyector y escenario", "kind": "title1", "maxW": 4000},
+    "t_remote": {"x": 0, "y": 3720, "text": "Control remoto y congregación (LAN)", "kind": "title1", "maxW": 1840}
+  }
+}
