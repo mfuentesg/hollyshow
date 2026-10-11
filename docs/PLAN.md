@@ -31,11 +31,13 @@
 - Metadatos: autor, copyright, número CCLI, tono, BPM, etiquetas.
 - Importación: texto plano, **OpenLyrics (XML)**, **ChordPro**, OpenSong. (Investigar exportación de Holyrics, ver §8.)
 
-**Biblia**
-- Múltiples versiones instaladas; búsqueda por referencia en español: `Jn 3:16`, `juan 3 16-18`, `1 Co 13`, `Sal 23`, `Ap 21:1-4`.
-- Búsqueda por texto (FTS) en toda la Biblia.
-- Presentación de un versículo o rango, con división automática si no cabe en un slide.
-- Dos versiones lado a lado (ej. RVR1909 + NVI, o español + inglés).
+**Biblia (multiversión)**
+- **Múltiples versiones instaladas a la vez**, en varios idiomas (español, inglés, portugués…). Ver §2.4.
+- Búsqueda por referencia en español: `Jn 3:16`, `juan 3 16-18`, `1 Co 13`, `Sal 23`, `Ap 21:1-4`. La referencia es independiente de la versión: se escribe una vez y se puede mostrar en cualquiera.
+- **Cambiar de versión en vivo** (atajo de teclado / selector en el remoto) manteniendo el mismo pasaje en pantalla.
+- **Hasta 2–4 versiones simultáneas** en el mismo slide (lado a lado o apiladas), ej. RVR1909 + KJV para culto bilingüe.
+- Búsqueda por texto (FTS) en una versión o en todas.
+- Presentación de un versículo o rango, con división automática si no cabe en un slide (sincronizada entre versiones en modo paralelo).
 - Historial de versículos mostrados.
 
 **Presentación / salida**
@@ -76,6 +78,32 @@
 - Integración MIDI / Stream Deck / pedaleras Bluetooth (atajos de teclado ya cubren pedaleras HID).
 - Presentaciones tipo diapositivas libres (texto + imágenes posicionadas).
 - Plugins / API pública (HTTP/WebSocket) para integraciones de terceros.
+
+### 2.4 Biblia: diseño de múltiples versiones
+
+**Gestor de versiones**
+- Pantalla "Versiones de la Biblia": lista de instaladas, activar/desactivar, ordenar favoritas, versión **por defecto** (global) y **secundaria** (para modo paralelo).
+- Instalar desde: (a) versiones de dominio público incluidas en el instalador, (b) **importar archivo** (OSIS, USFM, Zefania XML, OpenSong XML, y formatos tabulares CSV/JSON), (c) futuro: catálogo descargable de versiones con licencia libre.
+- Cada versión guarda: código (`RVR1909`), nombre, idioma, licencia/copyright, si es de dominio público, esquema de versificación, lista de libros incluidos.
+- Mostrar el **copyright/abreviatura de la versión** en el slide (configurable por tema), requisito de muchas licencias.
+
+**Referencias independientes de la versión**
+- Internamente un pasaje es `(libro canónico OSIS, capítulo, versículo inicio–fin)`, por ejemplo `John.3.16-John.3.18`. El nombre del libro ("Juan", "John", "João") y las abreviaturas se resuelven por idioma, así se puede buscar en español y mostrar en inglés.
+- La playlist guarda la referencia canónica, no el texto: al cambiar la versión por defecto, el culto entero cambia sin reeditarlo.
+
+**Diferencias entre versiones (lo complicado)**
+- **Versificación distinta:** algunas versiones numeran diferente (títulos de Salmos como v. 1, Malaquías 3–4, Joel 2–3, versículos omitidos como Hch 8:37 en versiones críticas). Usar tablas de mapeo de versificación (como las de SWORD/CrossWire o la versificación estándar "KJV/Vulgata") para alinear versículos al mostrar en paralelo; si un versículo no existe en una versión, mostrar indicador en vez de romper.
+- **Canon distinto:** versiones católicas incluyen deuterocanónicos (Tobías, Sabiduría, etc.). El modelo soporta todos los libros; la UI oculta los que la versión no tiene.
+- **Marcas en el texto:** palabras en cursiva añadidas por el traductor, palabras de Jesús en rojo, notas al pie, títulos de sección. Importar y guardar marcado mínimo (cursiva, rojo) y permitir activarlo/desactivarlo en el tema; descartar notas al pie para proyección.
+
+**Modo paralelo en pantalla**
+- Diseños: columnas lado a lado, arriba/abajo, o versión principal grande + secundaria más pequeña (estilo subtítulo).
+- Auto-fit conjunto: las versiones de un mismo slide se dividen en los mismos cortes de versículo para que siempre se vea el mismo pasaje.
+- Cada versión puede tener estilo propio (color/fuente) dentro del tema.
+
+**Control remoto**
+- Selector de versión en el remoto; el rol "Pastor" puede tener su versión preferida para leer en su dispositivo, independiente de la proyectada.
+- Vista "lector": el remoto muestra el pasaje completo en la versión elegida para quien predica, con el versículo en vivo resaltado.
 
 ---
 
@@ -239,10 +267,14 @@ song_sections(id, song_id, kind[verse|chorus|bridge|...], label, order, lyrics, 
 song_arrangements(id, song_id, name, sequence[json: section ids])
 songs_fts(title, lyrics, author)                     -- FTS5, texto normalizado sin acentos
 
-bibles(id, code, name, language, license, is_public_domain)
-bible_books(bible_id, book_num, name, abbrevs[json], testament)
-bible_verses(bible_id, book_num, chapter, verse, text)
-bible_fts(text)
+bibles(id, code, name, language, license, copyright_text, is_public_domain,
+       versification, sort_order, is_enabled, is_default, is_secondary)
+canonical_books(osis_id, book_num, testament, is_deuterocanonical)       -- Gen, Exod, …, John, …
+book_names(osis_id, language, name, abbrevs[json])                      -- "Juan", ["Jn","Jua"] / "John", ["Jn","Jhn"]
+bible_books(bible_id, osis_id, display_name)                            -- libros presentes en cada versión
+bible_verses(bible_id, osis_id, chapter, verse, text, markup[json])     -- cursivas, palabras de Jesús
+versification_map(scheme, osis_id, chapter, verse, std_chapter, std_verse)  -- alinear versiones en paralelo
+bible_fts(bible_id, text)                                              -- FTS5 por versión, sin acentos
 
 themes(id, name, json)                               -- fondo, fuentes, márgenes, transiciones
 media(id, path, kind, hash, duration, thumbnail)
@@ -279,11 +311,14 @@ Estimaciones para 1 desarrollador a tiempo completo; ajustar según dedicación.
 - mDNS, pantalla de diagnóstico de red, lista de dispositivos conectados.
 - Pruebas con varios celulares (iOS Safari, Android Chrome) y reconexión al perder Wi-Fi.
 
-### Fase 3 — Biblia (2–3 semanas)
-- Importadores (OSIS/USFM/Zefania) + Biblias de dominio público incluidas.
+### Fase 3 — Biblia multiversión (3–4 semanas)
+- Modelo canónico de libros (OSIS) + nombres/abreviaturas por idioma.
+- Importadores (OSIS/USFM/Zefania/OpenSong) + varias Biblias de dominio público incluidas (ej. RVR1909, Reina-Valera Antigua, KJV, Almeida antigua).
+- Gestor de versiones: instalar, activar, ordenar, versión por defecto y secundaria.
 - Parser de referencias en español (abreviaturas, rangos, capítulos completos, libros con número: "1 Juan", "1Jn", "I Juan").
-- Búsqueda por texto, versiones paralelas, división de versículos largos.
-- Búsqueda bíblica desde el remoto (rol "Pastor").
+- Cambio de versión en vivo; modo paralelo 2–4 versiones con división sincronizada; mapeo de versificación.
+- Búsqueda por texto por versión o en todas; división de versículos largos.
+- Búsqueda bíblica y selector de versión desde el remoto (rol "Pastor", vista "lector").
 
 ### Fase 4 — Medios y efectos (2–3 semanas)
 - Fondos de imagen/video, biblioteca de media con miniaturas.
@@ -302,7 +337,7 @@ Estimaciones para 1 desarrollador a tiempo completo; ajustar según dedicación.
 - i18n, onboarding, documentación de usuario.
 - **Beta en 2–3 iglesias reales** durante cultos con feedback.
 
-**Total estimado MVP sólido (Fases 0–3):** ~2–3 meses. **v1.0 completa (0–6):** ~4–5 meses.
+**Total estimado MVP sólido (Fases 0–3):** ~2,5–3 meses. **v1.0 completa (0–6):** ~4,5–5 meses.
 
 ---
 
