@@ -12,3 +12,11 @@ workspace = true
 [dependencies]
 hollyshow-core.workspace = true
 thiserror.workspace = true
+unicode-normalization.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+roxmltree = "0.20"
+flate2 = "1"
+
+[dev-dependencies]
+hollyshow-storage-api = { workspace = true, features = ["testing"] }
