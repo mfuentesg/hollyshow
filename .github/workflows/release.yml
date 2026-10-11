@@ -111,12 +111,14 @@ jobs:
           releaseDraft: true
           # Prerelease flag from real tags only (a branch name with a hyphen must not count).
           prerelease: ${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-') }}
-          includeUpdaterJson: true
+          # Without the signing secret (e.g. a first test run) build plain installers: no updater
+          # artifacts, and the publish job leaves the release as a draft.
+          includeUpdaterJson: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
           updaterJsonPreferNsis: true
           # The overlay turns on signed updater artifacts (needs TAURI_SIGNING_PRIVATE_KEY); local
           # `pnpm tauri build` works without the key. The path is relative to projectPath
           # (apps/desktop), where `pnpm tauri` runs.
-          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+          args: ${{ matrix.args }} ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && '--config src-tauri/tauri.release.conf.json' || '' }}
 
       # Also on failure, so a broken leg still leaves whatever it bundled for inspection.
       - name: Upload bundles as workflow artifacts
@@ -142,6 +144,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -149,6 +152,10 @@ jobs:
           node-version: 22
       - name: Validate latest.json and publish the release
         run: |
+          if [ "${HAS_UPDATER_KEY}" != "true" ]; then
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set: installers were built without updater artifacts; the release stays a draft (see docs/SIGNING.md)."
+            exit 0
+          fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             TAG="${GITHUB_REF_NAME}"
           else
