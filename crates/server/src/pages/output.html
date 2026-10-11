@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HollyShow - salida __MODE__</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; }
+  #stage { position: fixed; inset: 0; display: flex; padding: 4vh 5vw; box-sizing: border-box;
+    transition: opacity .25s ease; }
+  #stage.hidden { opacity: 0; }
+  #card { display: flex; flex-direction: column; gap: .35em; text-shadow: 0 .06em .16em rgba(0,0,0,.75); }
+  .full #stage { align-items: center; justify-content: center; text-align: center; }
+  .full #card { max-width: 100%; font-size: 6vh; }
+  .lower-third #stage { align-items: flex-end; justify-content: flex-start; }
+  .lower-third #card { font-size: 4vh; background: rgba(8,12,24,.72); border-left: .35em solid #f2b441;
+    padding: .5em .9em; border-radius: .25em; max-width: 90%; }
+  .label { font-size: .55em; letter-spacing: .08em; text-transform: uppercase; color: #f2b441; }
+  .line { line-height: 1.25; }
+  .tr { line-height: 1.25; opacity: .8; font-style: italic; font-size: .8em; }
+  .ref { font-size: .6em; opacity: .85; }
+  .footer { font-size: .5em; opacity: .7; }
+</style>
+</head>
+<body class="__MODE__">
+<div id="stage" class="hidden"><div id="card"></div></div>
+<script>
+(function () {
+  "use strict";
+  var stage = document.getElementById("stage");
+  var card = document.getElementById("card");
+  var ws = null, retry = 500, ping = null, view = null;
+
+  function el(cls, text) {
+    var d = document.createElement("div");
+    d.className = cls;
+    d.textContent = text;
+    return d;
+  }
+
+  function render() {
+    var live = view && view.live;
+    var visible = view && live && !view.blackout && !view.clear && live.slide && live.slide.kind !== "blank";
+    card.textContent = "";
+    if (!visible) { stage.className = "hidden"; return; }
+    var s = live.slide;
+    if (s.label) card.appendChild(el("label", s.label));
+    (s.lines || []).forEach(function (l, i) {
+      card.appendChild(el("line", l));
+      if (s.translation && s.translation[i]) card.appendChild(el("tr", s.translation[i]));
+    });
+    (s.bible || []).forEach(function (c) {
+      card.appendChild(el("line", c.text));
+      card.appendChild(el("ref", c.reference + (c.copyright ? " (" + c.copyright + ")" : "")));
+    });
+    if (s.footer) card.appendChild(el("footer", s.footer));
+    stage.className = "";
+  }
+
+  function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
+
+  function connect() {
+    var proto = location.protocol === "https:" ? "wss://" : "ws://";
+    ws = new WebSocket(proto + location.host + "/ws");
+    ws.onopen = function () {
+      send({ type: "hello", protocolMin: 1, protocolMax: 1, role: "congregation",
+             deviceName: "Salida __MODE__", capabilities: ["output"] });
+    };
+    ws.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.type === "welcome") {
+        retry = 500;
+        clearInterval(ping);
+        ping = setInterval(function () { send({ type: "ping", t: Date.now() }); }, (m.heartbeatMs || 5000));
+      } else if (m.type === "snapshot") { view = m.snapshot.view; render(); }
+      else if (m.type === "state") { view = m.view; render(); }
+      else if (m.type === "resync") { send({ type: "resync" }); }
+      else if (m.type === "reject") { view = null; render(); }
+    };
+    ws.onclose = function () {
+      clearInterval(ping);
+      // Keep the last picture while reconnecting: a Wi-Fi blip must not blank the stream.
+      setTimeout(connect, retry);
+      retry = Math.min(retry * 2, 5000);
+    };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

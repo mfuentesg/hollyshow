@@ -18,13 +18,23 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
+log.workspace = true
+hollyshow-storage-api.workspace = true
 rust-embed.workspace = true
 mime_guess.workspace = true
+mdns-sd = "0.21.5"
+if-addrs = "0.15.0"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+sha2 = "0.11.0"
+getrandom = "0.4.3"
+futures-util = "0.3.34"
 
 [dev-dependencies]
 hollyshow-engine.workspace = true
 hollyshow-songs.workspace = true
 hollyshow-storage-api = { workspace = true, features = ["testing"] }
 tower.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 http-body-util = "0.1"
+tokio-tungstenite = "0.30.0"
+futures-util = "0.3.34"
