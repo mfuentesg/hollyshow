@@ -1,6 +1,7 @@
 import "@hollyshow/ui";
 import "./i18n";
 import "./styles.css";
+import "./operator/operator.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";

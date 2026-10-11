@@ -30,6 +30,21 @@
   --hs-font-mono: "JetBrains Mono", ui-monospace, monospace;
   --hs-font-projection: "Archivo", "Instrument Sans", system-ui, sans-serif;
 
+  /* Derived surfaces and tints (Operator / Bible / SongEditor mockups). */
+  --hs-chrome: #12151b;
+  --hs-border-strong: #3a404d;
+  --hs-amber-tint: #3a2c10;
+  --hs-amber-text: #ffd27a;
+  --hs-live-tint: #2a1416;
+  --hs-live-text: #ff8a8e;
+  --hs-preview-tint: #172338;
+  --hs-preview-deep: #0b1a2e;
+  --hs-preview-text: #8db8ff;
+  --hs-chip-blue: #23324d;
+  --hs-chip-blue-text: #cfe0ff;
+  --hs-text-bible-alt: #c9d6ea;
+  --hs-danger-text: #ff8a8e;
+
   --hs-radius-sm: 8px;
   --hs-radius-md: 12px;
   --hs-radius-pill: 999px;
