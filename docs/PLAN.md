@@ -105,6 +105,85 @@
 - Selector de versión en el remoto; el rol "Pastor" puede tener su versión preferida para leer en su dispositivo, independiente de la proyectada.
 - Vista "lector": el remoto muestra el pasaje completo en la versión elegida para quien predica, con el versículo en vivo resaltado.
 
+### 2.5 Features modernas (investigación de mercado)
+
+Referencia del mercado actual: Holyrics (gratis, con app remota de pago, plan online con sincronización, API y encuestas por Telegram), ProPresenter (estándar profesional, "reflow" de edición, integración CCLI), FreeShow (open source, multiplataforma, pero con reportes de inestabilidad) y una nueva ola de herramientas con IA (Pewbeam, Loghema, LiveVerse, SmartVerses) que **detectan versículos en la predicación por voz y los proyectan**. Lo que sigue son las features que harían a HollyShow destacar.
+
+Leyenda — **Impacto**: ★ a ★★★ · **Esfuerzo**: S (días) / M (1–3 semanas) / L (1+ mes)
+
+#### A. Inteligencia artificial (local y offline primero)
+
+| Feature | Descripción | Impacto | Esfuerzo |
+|---|---|---|---|
+| **Detección de versículos por voz** | Escucha al predicador (micrófono o entrada de la consola), transcribe localmente con **whisper.cpp** (`whisper-rs`, modelo en español) y detecta referencias ("Juan tres dieciséis", "como dice Romanos 8"). La sugerencia aparece en **preview**; el operador la confirma con una tecla. Modo "auto-live" opcional. | ★★★ | L |
+| Detección de citas/paráfrasis | Si el predicador *lee* un versículo sin decir la referencia, buscarlo por similitud de texto (FTS + embeddings locales) en la versión activa. | ★★ | L |
+| **Subtítulos en vivo** | La misma transcripción como subtítulos de la predicación en la pantalla, en el stream (OBS) o en celulares. Accesibilidad para personas con discapacidad auditiva. | ★★★ | M (reutiliza lo anterior) |
+| Traducción en vivo | Traducir los subtítulos a otro idioma para visitantes (modelo local o servicio en la nube opcional). | ★★ | M |
+| Formateo inteligente de letras | Pegar una letra en bruto → detectar estrofas, coro repetido, puente; quitar acordes en línea; proponer secciones y arreglo. Heurísticas primero, IA opcional. | ★★ | S–M |
+| Seguimiento automático de letra | Escuchar la música/voz y avanzar slides solos (experimental; el operador siempre puede intervenir). | ★ | L |
+| Sugerencias de canciones | Por tema del sermón, tono, BPM, no repetidas recientemente (usa el historial). | ★ | M |
+
+> Preocupaciones IA: consumo de CPU/GPU en equipos modestos (usar modelos `small`/`base` cuantizados, Metal en Mac), permisos de micrófono en macOS, privacidad (procesar todo localmente por defecto), y **nunca proyectar algo sin control humano** salvo que el operador lo active explícitamente.
+
+#### B. Congregación conectada
+
+| Feature | Descripción | Impacto | Esfuerzo |
+|---|---|---|---|
+| **Letras y Biblia en el celular de la congregación** | QR en pantalla → página web de solo lectura que sigue el slide en vivo: letra grande, modo oscuro, versión bíblica e idioma elegidos por cada persona. Ideal para personas con baja visión o visitantes de otro idioma. | ★★★ | M |
+| Peticiones de oración / preguntas | Formulario desde el celular → bandeja moderada por el operador → mostrar en pantalla o enviar al pastor. | ★★ | M |
+| Encuestas en vivo | Votación simple (ej. canción para cerrar, preguntas en estudios bíblicos) con resultados en pantalla. | ★ | M |
+
+> Preocupación: decenas o cientos de celulares en el Wi-Fi de la iglesia. La vista de congregación debe ser liviana (SSE o WebSocket de solo lectura, sin imágenes pesadas), con límite de conexiones configurable y separada de los permisos de control.
+
+#### C. Producción profesional e integraciones
+
+| Feature | Descripción | Impacto | Esfuerzo |
+|---|---|---|---|
+| **Múltiples salidas con contenido distinto** | Pantalla principal (letra + fondo), pantallas laterales, monitor del lobby (anuncios en loop), stage display, salida OBS — cada una con su "look" sobre el mismo estado. | ★★★ | M |
+| **API pública HTTP/WebSocket + módulo Bitfocus Companion** | Control desde **Stream Deck**, consolas y otras apps. Companion es el estándar en iglesias con producción. | ★★★ | M |
+| Entrada/salida **MIDI y OSC** | Disparar slides desde secuencias de pistas (MultiTracks/Ableton/Playback) y mandar cues a luces o a otros sistemas. | ★★ | M |
+| Cámara en vivo como fondo (IMAG) | Capturadora/webcam como capa de fondo con letra encima. | ★★ | M |
+| Salida NDI | Para switchers de video sin capturadora (ver licencia del SDK). | ★★ | M–L |
+| Control de luces (sACN/Art-Net) | Cues de iluminación sencillos ligados a slides o secciones. | ★ | L |
+| Planning Center Services | Importar planes de culto, canciones y equipo (muy usado en iglesias de habla inglesa). | ★★ | M |
+
+#### D. Planificación y equipo
+
+| Feature | Descripción | Impacto | Esfuerzo |
+|---|---|---|---|
+| **Plantillas de culto** | Estructura que se repite cada domingo (bienvenida, alabanza ×4, ofrenda, prédica, anuncios) → crear el culto en segundos. | ★★★ | S |
+| Temporizadores del culto | Cada ítem con duración prevista; el stage display muestra tiempo restante y avisa si se pasa ("faltan 2 min"). | ★★ | S–M |
+| Modo ensayo | Recorrer el culto sin afectar la salida en vivo; grabar tiempos de cada slide para auto-avance opcional. | ★★ | M |
+| Estadísticas | Canciones más/menos usadas, rotación, reporte CCLI exportable. | ★ | S |
+| Equipo y turnos | Quién opera, quién canta, notificaciones (requiere nube, v2). | ★ | L |
+
+#### E. Fiabilidad "de nivel profesional"
+
+| Feature | Descripción | Impacto | Esfuerzo |
+|---|---|---|---|
+| **Computadora de respaldo en caliente** | Una segunda computadora en la LAN espeja el estado en tiempo real y puede tomar la salida con un clic si la principal falla. Muy pocos programas lo ofrecen. | ★★★ | M–L |
+| **"Modo culto"** | Bloquea ediciones accidentales, pospone actualizaciones, avisa si las notificaciones del sistema están activas, evita que la pantalla se suspenda. | ★★★ | S |
+| Panel de salud | FPS de la salida, frames perdidos, CPU/memoria, remotos conectados, estado de la red. | ★★ | S–M |
+| Reporte de errores opt-in | Envío de crashes (ej. Sentry) sólo con consentimiento. | ★★ | S |
+
+#### F. Experiencia moderna
+
+- **Paleta de comandos** (Cmd/Ctrl+K) para todo: buscar canción, versículo, ejecutar acciones.
+- **Deshacer/rehacer** en toda la app; arrastrar y soltar archivos, carpetas de fondos y letras.
+- **Edición en vivo ("reflow")**: corregir un error de tipeo en el slide en vivo y que se actualice sin cortar.
+- **Galería de temas** y fondos animados libres incluidos; importar/exportar temas como archivo para compartir entre iglesias.
+- **Modo oscuro/claro**, UI escalable para pantallas pequeñas, accesibilidad (alto contraste, fuentes legibles).
+- **Onboarding con contenido de ejemplo** y tour guiado; asistente para conectar el proyector y el remoto.
+- **Sincronización en la nube opcional** (biblioteca, temas, cultos) para iglesias con varias sedes o para preparar el culto desde casa — siempre offline-first, la nube nunca es requisito para proyectar.
+- **Colaboración remota** (v2): el líder de alabanza arma la lista desde su casa y aparece en la computadora de la iglesia.
+
+#### Recomendación de prioridad
+
+1. **Para v1.0** (bajo esfuerzo, alto impacto): plantillas de culto, modo culto, múltiples salidas, temporizadores, paleta de comandos, edición en vivo.
+2. **Primer gran diferenciador post-v1:** letras/Biblia en el celular de la congregación + API/Companion.
+3. **Segundo diferenciador:** detección de versículos por voz + subtítulos en vivo (local, en español). Es lo más novedoso del mercado y muy pocos competidores lo hacen bien en español.
+4. **Para iglesias grandes:** respaldo en caliente, MIDI/OSC, NDI, Planning Center.
+
 ---
 
 ## 3. Arquitectura
@@ -337,7 +416,15 @@ Estimaciones para 1 desarrollador a tiempo completo; ajustar según dedicación.
 - i18n, onboarding, documentación de usuario.
 - **Beta en 2–3 iglesias reales** durante cultos con feedback.
 
-**Total estimado MVP sólido (Fases 0–3):** ~2,5–3 meses. **v1.0 completa (0–6):** ~4,5–5 meses.
+> Incluir en Fases 1–6 los "rápidos" de §2.5: plantillas de culto, modo culto, temporizadores, paleta de comandos, edición en vivo y múltiples salidas.
+
+**Total estimado MVP sólido (Fases 0–3):** ~2,5–3 meses. **v1.0 completa (0–6):** ~5–5,5 meses.
+
+### Fase 7 — Diferenciadores (post v1.0, iterativo)
+- **7a. Congregación conectada (3–4 semanas):** vista de solo lectura en celulares, peticiones de oración, encuestas.
+- **7b. Integraciones (3–4 semanas):** API pública documentada, módulo Bitfocus Companion, MIDI/OSC, Planning Center.
+- **7c. IA de voz (6–8 semanas):** transcripción local con whisper.cpp, detección de referencias en español, subtítulos en vivo, luego paráfrasis y traducción.
+- **7d. Profesional (4–6 semanas):** computadora de respaldo en caliente, NDI, cámara en vivo, sincronización en la nube opcional.
 
 ---
 
@@ -370,6 +457,8 @@ Estimaciones para 1 desarrollador a tiempo completo; ajustar según dedicación.
 5. **Importación desde Holyrics:** confirmar qué puede exportar Holyrics (texto, backup) y si es legítimo/práctico leerlo.
 6. **Remoto como PWA (HTTP) vs app nativa:** empezar con web; reevaluar tras la beta.
 7. **Sincronización en la nube:** ¿necesaria para iglesias con varias computadoras/sedes?
+8. **IA:** ¿sólo local (privado, gratis, más CPU) o también servicios en la nube (más preciso, costo por uso, requiere internet)? Propuesta: local por defecto, nube opcional.
+9. **Orden de diferenciadores post-v1:** congregación conectada vs. IA de voz vs. integraciones de producción — depende del perfil de las iglesias objetivo.
 
 ---
 
