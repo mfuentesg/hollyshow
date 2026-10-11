@@ -52,22 +52,40 @@ describe("useLivePresentation ordering", () => {
     expect(result.current?.view.version).toBe(7);
   });
 
-  it("a slow snapshot never overwrites a newer update", async () => {
+  it("applies the live view immediately even when showRevision changed", async () => {
+    const f = fakeApi(snap(1));
+    const { result } = renderHook(() => useLivePresentation(f.api));
+    await act(async () => {});
+    f.hold(); // the snapshot never resolves
+    act(() => void f.emit(2, 1));
+    expect(result.current?.view.version).toBe(2);
+    expect(result.current?.view.showRevision).toBe(1);
+  });
+
+  it("a slow snapshot never overwrites a newer update and syncs are serialized", async () => {
     const f = fakeApi(snap(1));
     const { result } = renderHook(() => useLivePresentation(f.api));
     await act(async () => {});
     f.hold();
-    act(() => void f.emit(2, 1)); // showRevision changed -> sync in flight (index 0)
-    act(() => void f.emit(3, 1)); // newer update while in flight: showRevision differs, sync #2
+    act(() => void f.emit(2, 1)); // sync in flight (index 0)
+    act(() => void f.emit(3, 1)); // newer update: no second concurrent request
+    expect(f.raw.getSnapshot).toHaveBeenCalledTimes(2); // initial + one
     await act(async () => {
-      f.resolve(1, snap(3, 1));
-      await Promise.resolve();
-    });
-    await act(async () => {
-      f.resolve(0, snap(2, 1)); // stale snapshot arrives last
+      f.resolve(0, { ...snap(2, 1), show: [{ id: "a" }] });
       await Promise.resolve();
     });
     expect(result.current?.view.version).toBe(3);
+    expect(result.current?.show).toEqual([{ id: "a" }]);
+  });
+
+  it("does not re-query themes per show revision", async () => {
+    const f = fakeApi(snap(1));
+    renderHook(() => useLivePresentation(f.api));
+    await act(async () => {});
+    const before = f.raw.query.mock.calls.length;
+    act(() => void f.emit(2, 1));
+    await act(async () => {});
+    expect(f.raw.query.mock.calls.length).toBe(before);
   });
 
   it("reconciles periodically when the host moved on without an event", async () => {

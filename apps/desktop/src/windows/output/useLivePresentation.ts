@@ -27,43 +27,66 @@ export function useLivePresentation(api: HollyApi): LivePresentation | null {
 
   useEffect(() => {
     let alive = true;
-    let revision = -1;
+    let revision = -1; // showRevision of the show currently held in state
     let applied = -1; // highest StateView.version shown so far
+    let themes: Theme[] = []; // cached in the window; reloaded only on libraryChanged
+    let inFlight = false;
+    let again = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const loadThemes = async () => {
       try {
         const r = await api.query({ kind: "listThemes" });
-        if (alive) setState((s) => (s ? { ...s, themes: r.items } : s));
-        return r.items;
+        if (!alive) return;
+        themes = r.items;
+        setState((s) => (s ? { ...s, themes } : s));
       } catch {
-        return null;
+        // keep the cached themes
       }
     };
 
+    // Fetches the show in the background. Never blocks the live view: updates are applied as
+    // they arrive; this only refreshes the (heavier) show list. One request at a time; if more
+    // revisions arrive meanwhile, one more round runs afterwards, so results can't land out of
+    // order and a flood of updates can't starve the sync.
     const sync = async (attempt = 0): Promise<void> => {
+      if (inFlight) {
+        again = true;
+        return;
+      }
+      inFlight = true;
+      again = false;
+      let failed = false;
       try {
-        const [snap, themes] = await Promise.all([
-          api.getSnapshot(),
-          api.query({ kind: "listThemes" }),
-        ]);
+        const snap = await api.getSnapshot();
         if (!alive) return;
-        // A newer update landed while this snapshot was in flight: keep it, the update that
-        // changed showRevision (if any) already scheduled its own sync.
-        if (snap.version < applied) return;
         const { show, ...view } = snap;
-        revision = view.showRevision;
-        applied = snap.version;
-        setState({ view, show, themes: themes.items });
+        const newer = view.version >= applied;
+        if (newer) applied = view.version;
+        const showFresh = view.showRevision >= revision;
+        if (showFresh) revision = view.showRevision;
+        setState((cur) => ({
+          view: newer || !cur ? view : cur.view,
+          show: showFresh || !cur ? show : cur.show,
+          themes: cur?.themes ?? themes,
+        }));
       } catch {
-        if (!alive) return;
+        failed = true;
+      } finally {
+        inFlight = false;
+      }
+      if (!alive) return;
+      if (failed) {
         timer = setTimeout(
           () => void sync(attempt + 1),
           RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)],
         );
+      } else if (again) {
+        void sync();
       }
     };
     void sync();
+    void loadThemes();
 
     const reconcile = async () => {
       try {
@@ -83,12 +106,10 @@ export function useLivePresentation(api: HollyApi): LivePresentation | null {
 
     const off = api.subscribe((u) => {
       if (u.view.version < applied) return; // stale, out-of-order delivery
-      if (u.view.showRevision !== revision) {
-        void sync();
-      } else {
-        applied = u.view.version;
-        setState((cur) => (cur ? { ...cur, view: u.view } : cur));
-      }
+      applied = u.view.version;
+      // The live cue lives in the view: show it right away, whatever the show revision.
+      setState((cur) => (cur ? { ...cur, view: u.view } : cur));
+      if (u.view.showRevision !== revision) void sync();
       if (
         u.events.some(
           (e) => e.kind === "libraryChanged" && (e.scope === "themes" || e.scope === "media"),
