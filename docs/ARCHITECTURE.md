@@ -134,7 +134,8 @@ El estado Rust es la fuente de verdad **del show expandido**, pero la fuente del
   trabaja sobre una copia y solo se asigna si tiene éxito, así que un pánico no deja el estado a medias y un lock envenenado
   se puede recuperar sin riesgo.
 - Los repositorios son **síncronos** (rusqlite bloquea). Desde código async usar `tokio::task::spawn_blocking`.
-  Los comandos Tauri sincrónicos ya corren fuera del hilo principal.
+  Los comandos Tauri **sin** `async` se ejecutan en el hilo principal (el que atiende las ventanas de proyección): todos los
+  comandos del shell son `#[tauri::command(async)]` o `async fn` (con `spawn_blocking` para lo pesado, como instalar una Biblia).
 - Difusión: `tokio::sync::broadcast` (capacidad 256). Un consumidor lento recibe `Lagged`; `RoleFeed` lo convierte en
   `State` fresco + `Resync` (no se reproducen eventos perdidos), así nunca atasca al motor ni a los demás.
 - **Los pánicos no abortan la app.** El perfil release usa `unwind` (sin `panic = "abort"`). `AppService::dispatch/query`
@@ -215,7 +216,7 @@ Soak test de 4 h y pruebas de red con varios celulares: fuera del CI, checklist 
 ## 10. Fuera de alcance de v1 (solo TODOs documentados)
 
 Voz/subtítulos con IA, NDI, MIDI/OSC, luces, Planning Center, sincronización en la nube, respaldo en caliente
-y servidor de auto-actualización (`tauri-plugin-updater` queda para la Fase 6).
+y servidor de auto-actualización propio (el cliente de actualización ya está: `src-tauri/src/updater.rs` contra GitHub Releases).
 
 ## 11. Decisiones (revisión de arquitectura del andamiaje)
 
@@ -226,7 +227,7 @@ Resultado de la revisión independiente del andamiaje. Cada hallazgo se corrigi�
    slide. El reductor nunca deserializa de la red. Si un cliente envía un campo `resolved`, serde lo descarta (test).
 2. **`core` puro.** `Engine` y tokio pasan a `hollyshow-engine`. `core` solo tiene serde y ts-rs (+ unicode-normalization).
 3. **Capa de aplicación (`hollyshow-app`)** en lugar de `storage::host`. `storage` se parte en `storage-api` (traits, sin BD) y
-   `storage-sqlite` (rusqlite); `MemoryStore` queda tras la feature `testing` (desktop la activa solo hasta enchufar SQLite).
+   `storage-sqlite` (rusqlite); `MemoryStore` queda tras la feature `testing` (solo tests; el escritorio usa SQLite).
    La composición del slide bíblico vive en `bible`, el split de canciones en `songs` (`DefaultSplitter`).
 4. **Idempotencia por `(SessionId, CommandId)`**, ventana de 128 por sesión, máximo 256 sesiones (se expulsa la menos usada),
    y los errores también se cachean. `SessionId` lo asigna el servidor al aceptar el `Hello`.
@@ -252,7 +253,6 @@ Resultado de la revisión independiente del andamiaje. Cada hallazgo se corrigi�
 ### Deuda conocida (documentada, no bloqueante)
 
 - Cada pata de WebSocket debe llamar a `AppService::feed` **antes** de `snapshot_msg` (ver `RoleFeed`).
-- `Transpose` de acordes: `SplitOptions.transpose` ya llega al splitter; la transposición real la implementa el builder de canciones.
 - La persistencia de sesión escribe de forma síncrona tras cada comando aceptado (microsegundos con SQLite WAL); si midiéramos
   latencia visible, se moverá a un suscriptor del broadcast.
 
@@ -273,3 +273,38 @@ Resultado de la revisión independiente del andamiaje. Cada hallazgo se corrigi�
   `size_group` compartido) y `split_passage` (1..=4 versiones cortadas en los mismos versículos; hueco = «—»).
   `songs`/`bible` pueden delegar en ellos. `Slide.size_group` pide un tamaño de letra común a las diapositivas del grupo.
 - Al mostrar contenido que levanta `clear`/`logo` ahora se emiten `ClearChanged/LogoChanged{on:false}`.
+
+## 13. El shell de escritorio (`apps/desktop/src-tauri`)
+
+Raíz de composición: nada de reglas de negocio, solo cableado. `AppState` (clonable, todo en `Arc`) se crea en `setup` y se
+registra con `app.manage`.
+
+| Módulo        | Responsabilidad                                                                                                                                                                                                                                                                                                                           |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state.rs`    | `AppState::open`: SQLite en el directorio de datos del SO (`app_data_dir`), copia diaria (14), recuperación de una BD corrupta (copia más reciente o biblioteca vacía; la rota se conserva), contenido inicial (tema y plantilla, una sola vez), `session.running` para detectar cierres bruscos, `StartupInfo` («retomar donde estabas») |
+| `commands.rs` | `dispatch` / `query` / `get_snapshot` (los mismos casos de uso que el servidor LAN, como operador local)                                                                                                                                                                                                                                  |
+| `host.rs`     | Ajustes, escrituras de biblioteca (canciones, listas, temas; importación de canciones), remoto, salud. **Todas las escrituras se rechazan con `locked` en modo culto** y avisan a `AppService::library_changed / playlist_saved`                                                                                                          |
+| `bibles.rs`   | Instalación en segundo plano de las Biblias incluidas (primer arranque), catálogo, instalar/importar/quitar/ordenar versiones                                                                                                                                                                                                             |
+| `remote.rs`   | Ciclo de vida del servidor LAN (arranca al abrir; si el puerto 7420 está ocupado toma uno libre), PIN/QR con el rol configurado, dispositivos                                                                                                                                                                                             |
+| `windows.rs`  | Ventanas de salida/escenario: sin bordes, tamaño del monitor, **nunca** pantalla completa nativa; elección persistida; vigilancia de monitores (ver abajo); cierre bloqueado en modo culto                                                                                                                                                |
+| `media.rs`    | Comandos `media_*` y el protocolo `hollyshow-media://localhost/<id>` que sirve las imágenes descargadas a las salidas (con CORS para la ruta WebGL)                                                                                                                                                                                       |
+| `recovery.rs` | Autosave cada 5 s, copia horaria, volcado de la sesión desde el _panic hook_ (en otro hilo con tope de 1,5 s para no bloquearse si el pánico ocurre con el lock del motor tomado)                                                                                                                                                         |
+| `power.rs`    | Evita la suspensión mientras el modo culto está activo (`keepawake`: IOKit / `SetThreadExecutionState` / D-Bus); si la plataforma lo rechaza solo se registra                                                                                                                                                                             |
+| `health.rs`   | CPU/RAM del proceso (`sysinfo`) y fps medidos por la ventana de salida (`report_output_stats`)                                                                                                                                                                                                                                            |
+| `updater.rs`  | Actualización estilo VS Code (comprobar a los 30 s y cada 6 h, descargar en segundo plano, instalar al salir si hay culto o salida en vivo)                                                                                                                                                                                               |
+
+**Monitores (hot-plug).** Tauri no emite evento al conectar o desconectar pantallas: `watch_monitors` consulta cada 1,5 s. Si el
+monitor de una ventana desaparece, **primero** se pone la salida en negro (`SetOutputLayers { blackout: true }`, que el modo culto
+no bloquea) y luego se oculta la ventana; cuando vuelve una pantalla con el mismo nombre y resolución, la ventana se recoloca
+allí. El negro **no** se levanta solo: el operador lo suelta, para que un cable que parpadea no muestre una diapositiva a medias.
+Con una sola pantalla las salidas se abren como ventana pequeña, nunca encima del operador.
+
+**Modo culto.** Además del bloqueo del reductor (`Locked`): bloquea las escrituras de biblioteca del shell, impide cerrar la
+ventana del operador (evento `hollyshow://close-blocked`), mantiene el equipo despierto y difiere las actualizaciones.
+
+**Recuperación.** `session.v1` (playlist abierta, lo que estaba en pantalla, cronómetros, modo culto) se restaura en `AppService::restore`.
+`StartupInfo` le dice a la UI si se retomó una sesión, si el cierre anterior fue brusco y si hubo que restaurar la biblioteca.
+Los ajustes `session.*`, `server.*` y `windows.*` son del anfitrión: el webview no puede leerlos ni escribirlos.
+
+**Empaquetado.** `pnpm tauri build` (Linux: `.deb` y `.AppImage`) ejecuta antes `pnpm --filter remote build` para que el servidor
+incruste la app móvil. Las Biblias van como recursos (`resources/bibles/*.hsb.gz`); en desarrollo se leen del árbol de fuentes.

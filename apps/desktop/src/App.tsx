@@ -7,6 +7,7 @@ import { LanguageSettings } from "./operator/settings/LanguageSettings";
 import { OutputsSettings } from "./operator/settings/OutputsSettings";
 import { RemoteSettings } from "./operator/settings/RemoteSettings";
 import { SettingsLayout } from "./operator/settings/SettingsLayout";
+import { UpdateSettings } from "./operator/update";
 import { SongsPage } from "./operator/songs/SongsPage";
 import { ThemesPage } from "./operator/themes/ThemesPage";
 import { Output } from "./routes/Output";
@@ -29,6 +30,7 @@ export function App() {
           <Route path="bible" element={<BibleSettings />} />
           <Route path="remote" element={<RemoteSettings />} />
           <Route path="language" element={<LanguageSettings />} />
+          <Route path="updates" element={<UpdateSettings />} />
         </Route>
       </Route>
       <Route path="/output/:id" element={<Output />} />

@@ -199,6 +199,37 @@ impl Store {
         tx.commit().map_err(map_err)
     }
 
+    /// Sets the presentation order of the installed versions: `codes[0]` first. Versions not
+    /// listed keep their relative order after the listed ones. Unknown codes are ignored.
+    pub fn set_bible_order(&self, codes: &[VersionCode]) -> StorageResult<()> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(map_err)?;
+        let current: Vec<String> = all_versions(&tx)?.into_iter().map(|v| v.code.0).collect();
+        let listed = codes
+            .iter()
+            .filter(|c| current.contains(&c.0))
+            .map(|c| c.0.clone());
+        let mut order: Vec<String> = Vec::new();
+        for c in listed {
+            if !order.contains(&c) {
+                order.push(c);
+            }
+        }
+        for c in &current {
+            if !order.contains(c) {
+                order.push(c.clone());
+            }
+        }
+        for (i, code) in order.iter().enumerate() {
+            tx.execute(
+                "UPDATE bibles SET sort_order = ?2 WHERE code = ?1",
+                params![code, i as i64],
+            )
+            .map_err(map_err)?;
+        }
+        tx.commit().map_err(map_err)
+    }
+
     /// Number of verses stored for a version.
     pub fn verse_count(&self, code: &VersionCode) -> StorageResult<u32> {
         self.lock()

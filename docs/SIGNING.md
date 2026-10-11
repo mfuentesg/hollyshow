@@ -2,9 +2,9 @@
 
 Hay **dos firmas distintas** y conviene no confundirlas:
 
-| Firma | Para qué sirve | ¿Obligatoria? |
-|---|---|---|
-| **Firma del actualizador** (Tauri, Ed25519) | Que la app sólo acepte actualizaciones publicadas por nosotros. | **Sí**, para que funcione la actualización automática. |
+| Firma                                                             | Para qué sirve                                                                                 | ¿Obligatoria?                                           |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Firma del actualizador** (Tauri, Ed25519)                       | Que la app sólo acepte actualizaciones publicadas por nosotros.                                | **Sí**, para que funcione la actualización automática.  |
 | **Firma de código** (Apple Developer ID / certificado de Windows) | Que macOS y Windows no muestren advertencias de "desarrollador no identificado" / SmartScreen. | No para compilar, pero muy recomendada para distribuir. |
 
 ---
@@ -16,11 +16,13 @@ Las actualizaciones automáticas van firmadas. Para generar un par de claves nue
     pnpm tauri signer generate -w ~/.tauri/hollyshow.key
 
 Esto crea:
+
 - `~/.tauri/hollyshow.key` — clave privada (NUNCA al repo)
 - `~/.tauri/hollyshow.key.pub` — clave pública
 - la contraseña que elijas durante la generación
 
 Después:
+
 1. Copia el contenido de `hollyshow.key.pub` en `plugins.updater.pubkey` de `apps/desktop/src-tauri/tauri.conf.json`.
 2. En GitHub → Settings → Secrets and variables → Actions, crea:
    - `TAURI_SIGNING_PRIVATE_KEY` = contenido de `hollyshow.key`
@@ -30,7 +32,8 @@ Después:
 > Nota: durante el desarrollo inicial se configuró una clave pública provisional. Al generar tu propio par, reemplázala (paso 1) **antes del primer release público**; las versiones firmadas con la clave anterior no podrán actualizarse a las firmadas con la nueva.
 
 Comprobar que todo está listo:
-- `tauri.conf.json` tiene `bundle.createUpdaterArtifacts: true`, `plugins.updater.pubkey` con tu clave pública y el endpoint `https://github.com/mfuentesg/hollyshow/releases/latest/download/latest.json`.
+
+- `tauri.release.conf.json` tiene `bundle.createUpdaterArtifacts: true` (el release lo aplica con `--config`); `tauri.conf.json` tiene `plugins.updater.pubkey` con tu clave pública y el endpoint `https://github.com/mfuentesg/hollyshow/releases/latest/download/latest.json`.
 - Los dos secretos existen en GitHub (los valores no se pueden leer después de guardarlos; eso es normal).
 
 ---
@@ -57,6 +60,7 @@ Sin ella, Gatekeeper bloquea la app al abrirla ("no se puede verificar el desarr
 Sin ella, SmartScreen muestra "Windows protegió su PC" hasta que el instalador gane reputación.
 
 Opciones:
+
 - **Azure Trusted Signing** (la más económica hoy): crea una cuenta de Trusted Signing y un perfil de certificado en Azure; configura `bundle.windows.signCommand` en `tauri.conf.json` con la herramienta `trusted-signing-cli` y agrega como secretos `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`.
 - **Certificado OV/EV** de una autoridad (DigiCert, Sectigo…): configura `bundle.windows.certificateThumbprint`, `digestAlgorithm: "sha256"` y `timestampUrl`, e importa el `.pfx` en el runner de Windows desde un secreto en base64 antes del build.
 
@@ -79,6 +83,7 @@ Detalles actualizados: https://v2.tauri.app/distribute/sign/windows/ y https://v
 4. Revisa el release en GitHub, edita las notas (son las que ve el usuario en "Ver novedades").
 
 ### Lista de verificación antes de un release público
+
 - [ ] Clave pública propia en `tauri.conf.json` y secretos del actualizador en GitHub.
 - [ ] Versión actualizada en los tres archivos.
 - [ ] CI en verde en `master`.

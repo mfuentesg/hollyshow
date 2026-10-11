@@ -21,7 +21,7 @@ import type {
  * `playlist_saved` (ARCHITECTURE §3) so the show and the other clients refresh.
  */
 
-export type RemoteRole = "operator" | "pastor" | "stage" | "congregation";
+export type RemoteRole = "operator" | "musician" | "pastor" | "stage" | "congregation";
 
 export interface RemoteDevice {
   id: string;
@@ -42,6 +42,23 @@ export interface PairingInfo {
   pin: string;
   /** Epoch ms when the PIN stops being valid (null = until regenerated). */
   pinExpiresMs: number | null;
+  /** Same address carrying the one-time token: the QR encodes this so scanning pairs by itself. */
+  qrUrl?: string;
+}
+
+/** Roles a PIN can grant (the congregation joins without pairing). */
+export type PairingRole = Exclude<RemoteRole, "congregation">;
+
+/** What the host recovered when it started ("retomar donde estabas"). */
+export interface StartupInfo {
+  /** The previous service and/or what was on screen was restored. */
+  resumed: boolean;
+  /** The previous run ended without a clean exit (crash, power loss). */
+  crashed: boolean;
+  playlist: string | null;
+  hadLive: boolean;
+  /** The library file was damaged and had to be restored from a backup. */
+  dbRecovered: boolean;
 }
 
 export interface HealthInfo {
@@ -135,11 +152,14 @@ export interface HostApi {
   // Remote control.
   getPairing(): Promise<PairingInfo>;
   regeneratePin(): Promise<PairingInfo>;
+  /** Role the next PINs grant; invalidates the current PIN. */
+  setPairingRole(role: PairingRole): Promise<PairingInfo>;
   setRemoteEnabled(enabled: boolean): Promise<PairingInfo>;
   listDevices(): Promise<RemoteDevice[]>;
   kickDevice(id: string): Promise<void>;
 
   health(): Promise<HealthInfo>;
+  startupInfo(): Promise<StartupInfo>;
 }
 
 /**
@@ -169,8 +189,10 @@ export const HOST_COMMANDS = {
   outputMonitors: "output_monitors",
   getPairing: "get_pairing",
   regeneratePin: "regenerate_pin",
+  setPairingRole: "set_pairing_role",
   setRemoteEnabled: "set_remote_enabled",
   listDevices: "list_devices",
   kickDevice: "kick_device",
   health: "health",
+  startupInfo: "startup_info",
 } as const satisfies Record<keyof HostApi, string>;

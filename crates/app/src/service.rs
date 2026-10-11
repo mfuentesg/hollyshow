@@ -417,6 +417,23 @@ impl AppService {
         self.persist_locked(&mut host);
     }
 
+    /// Writes the session now (autosave tick, clean exit, panic hook). Unlike the per-command
+    /// save it also captures state that changes without a command, such as running timers.
+    /// Never panics and never blocks forever on a host lock held by a crashed thread.
+    pub fn flush_session(&self) {
+        let mut host = match self.host.try_lock() {
+            Ok(g) => g,
+            Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => return,
+        };
+        self.persist_locked(&mut host);
+    }
+
+    /// Playlist currently loaded as the show, if any.
+    pub fn active_playlist(&self) -> Option<PlaylistId> {
+        self.host().active_playlist.clone()
+    }
+
     /// Best effort: a failing disk must never stop a command that already succeeded.
     fn persist_locked(&self, host: &mut HostState) {
         let saved = self.engine.with_state(|s| SavedSession {

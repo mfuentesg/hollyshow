@@ -6,6 +6,7 @@ import {
   IconRedo,
   IconButton,
   IconUndo,
+  Modal,
   Select,
   SwitchRow,
   TextInput,
@@ -17,6 +18,7 @@ import { useToasts } from "../../hooks/useToasts";
 import { useHistory } from "../../lib/history";
 import { clamp, uid } from "../../lib/text";
 import { useOperator } from "../OperatorContext";
+import { ImageSearchPanel } from "../media";
 
 const FONTS = [
   "Archivo",
@@ -91,6 +93,7 @@ export function ThemesPage() {
   const h = useHistory<Theme>(op.themes[0] ?? defaultTheme);
   const [saved, setSaved] = useState<Theme>(h.value);
   const [sample, setSample] = useState<Sample>("lyrics");
+  const [picking, setPicking] = useState(false);
   const theme = h.value;
   const dirty = JSON.stringify(theme) !== JSON.stringify(saved);
 
@@ -133,7 +136,8 @@ export function ThemesPage() {
   };
 
   const bg = theme.background;
-  const bgKind = bg.kind === "color" || bg.kind === "gradient" ? bg.kind : "other";
+  const bgKind =
+    bg.kind === "color" || bg.kind === "gradient" || bg.kind === "image" ? bg.kind : "other";
   const m = theme.margins;
 
   return (
@@ -243,7 +247,12 @@ export function ThemesPage() {
                     <Select
                       id={id}
                       value={bgKind}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        if (e.target.value === "image") {
+                          // The image comes from the bank / library: pick it before switching.
+                          if (bg.kind !== "image") setPicking(true);
+                          return;
+                        }
                         edit({
                           background:
                             e.target.value === "gradient"
@@ -252,11 +261,12 @@ export function ThemesPage() {
                                   kind: "color",
                                   color: bg.kind === "gradient" ? bg.from : "#0F1115",
                                 },
-                        })
-                      }
+                        });
+                      }}
                     >
                       <option value="color">{t("themes.bg.color")}</option>
                       <option value="gradient">{t("themes.bg.gradient")}</option>
+                      <option value="image">{t("themes.bg.image")}</option>
                       {bgKind === "other" && (
                         <option value="other">{t(`themes.bg.${bg.kind}`)}</option>
                       )}
@@ -277,6 +287,39 @@ export function ThemesPage() {
                       />
                     )}
                   </Field>
+                )}
+                {bg.kind === "image" && (
+                  <>
+                    <Field label={t("themes.blur")}>
+                      {(id) => (
+                        <TextInput
+                          id={id}
+                          type="number"
+                          mono
+                          min={0}
+                          max={40}
+                          value={bg.blurPx}
+                          onChange={(e) =>
+                            edit(
+                              { background: { ...bg, blurPx: num(e.target.value, 0, 40, 0) } },
+                              "bg-blur",
+                            )
+                          }
+                        />
+                      )}
+                    </Field>
+                    <SwitchRow
+                      label={t("themes.kenBurns")}
+                      checked={bg.kenBurns}
+                      onChange={(v) => edit({ background: { ...bg, kenBurns: v } })}
+                    />
+                    <div className="row gap-8">
+                      <Button size="sm" onClick={() => setPicking(true)}>
+                        {t("themes.pickImage")}
+                      </Button>
+                      <span className="muted small mono">{bg.mediaId}</span>
+                    </div>
+                  </>
                 )}
                 {bg.kind === "gradient" && (
                   <>
@@ -587,6 +630,24 @@ export function ThemesPage() {
           </section>
         </div>
       </main>
+
+      {picking && (
+        <Modal
+          title={t("themes.pickImageTitle")}
+          closeLabel={t("common.close")}
+          onClose={() => setPicking(false)}
+          width={880}
+        >
+          <ImageSearchPanel
+            onUseAsBackground={(item) => {
+              edit({
+                background: { kind: "image", mediaId: item.id, blurPx: 0, kenBurns: false },
+              });
+              setPicking(false);
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

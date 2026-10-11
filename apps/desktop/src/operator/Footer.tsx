@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useNow } from "../hooks/useNow";
 import { useOperator } from "./OperatorContext";
+import { UpdateFooterIndicator } from "./update";
 
 function pinLabel(pin: string): string {
   return pin.length === 6 ? `${pin.slice(0, 3)} ${pin.slice(3)}` : pin;
@@ -38,6 +39,7 @@ export function Footer() {
           t("footer.remoteOff")
         )}
       </span>
+      <UpdateFooterIndicator />
       <span className="push-right mono strong" aria-label={t("footer.clock")}>
         {clock}
       </span>

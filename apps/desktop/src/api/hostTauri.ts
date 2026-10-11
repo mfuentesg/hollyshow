@@ -43,10 +43,13 @@ export function createTauriHost(): HostApi {
     outputMonitors: () => call<Awaited<ReturnType<HostApi["outputMonitors"]>>>("outputMonitors")(),
     getPairing: () => call<Awaited<ReturnType<HostApi["getPairing"]>>>("getPairing")(),
     regeneratePin: () => call<Awaited<ReturnType<HostApi["regeneratePin"]>>>("regeneratePin")(),
+    setPairingRole: (role) =>
+      call<Awaited<ReturnType<HostApi["setPairingRole"]>>>("setPairingRole")({ role }),
     setRemoteEnabled: (enabled) =>
       call<Awaited<ReturnType<HostApi["setRemoteEnabled"]>>>("setRemoteEnabled")({ enabled }),
     listDevices: () => call<Awaited<ReturnType<HostApi["listDevices"]>>>("listDevices")(),
     kickDevice: (id) => call<void>("kickDevice")({ id }),
     health: () => call<Awaited<ReturnType<HostApi["health"]>>>("health")(),
+    startupInfo: () => call<Awaited<ReturnType<HostApi["startupInfo"]>>>("startupInfo")(),
   };
 }

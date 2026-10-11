@@ -110,6 +110,12 @@ impl Store {
     }
 }
 
+/// Backups found in `dir`, newest first, without needing an open store (used to recover when the
+/// main database cannot be opened). A missing or unreadable folder yields an empty list.
+pub fn list_backup_files(dir: impl AsRef<Path>) -> Vec<BackupInfo> {
+    list_backups(dir.as_ref()).unwrap_or_default()
+}
+
 fn list_backups(dir: &Path) -> StorageResult<Vec<BackupInfo>> {
     let mut out = Vec::new();
     let rd = match std::fs::read_dir(dir) {

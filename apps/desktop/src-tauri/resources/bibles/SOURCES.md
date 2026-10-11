@@ -4,22 +4,22 @@ Solo se incluyen textos de **dominio público**. Ninguna traducción con derecho
 TLA, etc.) se distribuye con la aplicación; el usuario puede importar sus propios archivos (OSIS, USFM, Zefania, OpenSong,
 JSON, CSV) desde «Versiones de la Biblia».
 
-| Código    | Nombre                     | Idioma | Versículos | Licencia       | Archivo          |
-| --------- | -------------------------- | ------ | ---------- | -------------- | ---------------- |
-| `RVR1909` | Reina-Valera 1909          | es     | 31 084     | Dominio público | `rvr1909.hsb.gz` |
-| `KJV`     | King James Version (1769)  | en     | 31 102     | Dominio público | `kjv.hsb.gz`     |
-| `RV1865`  | Reina-Valera 1865          | es     | 31 098     | Dominio público | `rv1865.hsb.gz`  |
+| Código    | Nombre                    | Idioma | Versículos | Licencia        | Archivo          |
+| --------- | ------------------------- | ------ | ---------- | --------------- | ---------------- |
+| `RVR1909` | Reina-Valera 1909         | es     | 31 084     | Dominio público | `rvr1909.hsb.gz` |
+| `KJV`     | King James Version (1769) | en     | 31 102     | Dominio público | `kjv.hsb.gz`     |
+| `RV1865`  | Reina-Valera 1865         | es     | 31 098     | Dominio público | `rv1865.hsb.gz`  |
 
 ## Origen
 
 Los tres textos se tomaron de la colección de módulos de CrossWire/SWORD publicada en JSON por el repositorio
 `scrollmapper/bible_databases` (GitHub, código MIT; los textos conservan la licencia del módulo de origen):
 
-| Código    | Archivo de origen (rama `master`)  | Módulo     | Descripción del módulo                                            | SHA-256 del archivo de origen                                      |
-| --------- | ---------------------------------- | ---------- | ----------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `RVR1909` | `formats/json/SpaRV.json`          | `SpaRV`    | La Santa Biblia Reina-Valera (1909)                               | `94675a8b71785e4468918227b2496f9c7d407be658190e47795bdd5daade953d` |
-| `KJV`     | `formats/json/KJV.json`            | `KJV`      | King James Version (1769)                                         | `f0b09dc49dfb97bb84f03aae1fbf026485048c3cab31a7a41017e2d86ac1d11c` |
-| `RV1865`  | `formats/json/SpaRV1865.json`      | `SpaRV1865`| La Santa Biblia Reina-Valera (1865) con arreglos ortográficos     | `bce26de39969fbf16d7970ba29be7724ac738c5ac7639aaa55ea3f20819d75bb` |
+| Código    | Archivo de origen (rama `master`) | Módulo      | Descripción del módulo                                        | SHA-256 del archivo de origen                                      |
+| --------- | --------------------------------- | ----------- | ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `RVR1909` | `formats/json/SpaRV.json`         | `SpaRV`     | La Santa Biblia Reina-Valera (1909)                           | `94675a8b71785e4468918227b2496f9c7d407be658190e47795bdd5daade953d` |
+| `KJV`     | `formats/json/KJV.json`           | `KJV`       | King James Version (1769)                                     | `f0b09dc49dfb97bb84f03aae1fbf026485048c3cab31a7a41017e2d86ac1d11c` |
+| `RV1865`  | `formats/json/SpaRV1865.json`     | `SpaRV1865` | La Santa Biblia Reina-Valera (1865) con arreglos ortográficos | `bce26de39969fbf16d7970ba29be7724ac738c5ac7639aaa55ea3f20819d75bb` |
 
 URL base: `https://raw.githubusercontent.com/scrollmapper/bible_databases/master/`.
 

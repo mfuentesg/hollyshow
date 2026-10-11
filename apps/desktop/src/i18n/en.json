@@ -1,5 +1,7 @@
 {
-  "app": { "name": "HollyShow" },
+  "app": {
+    "name": "HollyShow"
+  },
   "common": {
     "cancel": "Cancel",
     "clear": "Clear",
@@ -67,7 +69,11 @@
     "send": "Send",
     "mock": "Demo mode (no Tauri)"
   },
-  "stage": { "now": "Now", "next": "Next", "message": "Message" },
+  "stage": {
+    "now": "Now",
+    "next": "Next",
+    "message": "Message"
+  },
   "palette": {
     "title": "Command palette",
     "open": "Open universal search",
@@ -225,7 +231,11 @@
     "showLive": "Show live",
     "addToService": "Add to service",
     "layout": "Layout",
-    "layouts": { "columns": "Columns", "stacked": "Stacked", "subtitle": "Subtitle" },
+    "layouts": {
+      "columns": "Columns",
+      "stacked": "Stacked",
+      "subtitle": "Subtitle"
+    },
     "options": "Options",
     "optionsNote": "Applied to the next verses you show.",
     "versePerSlide": "One verse per slide",
@@ -331,7 +341,11 @@
     "name": "Name",
     "savedToast": "Theme “{{name}}” saved",
     "align": "Alignment",
-    "aligns": { "left": "Left", "center": "Center", "right": "Right" },
+    "aligns": {
+      "left": "Left",
+      "center": "Center",
+      "right": "Right"
+    },
     "textColor": "Text color",
     "background": "Background",
     "backgroundKind": "Background type",
@@ -357,7 +371,12 @@
     "uppercase": "Uppercase",
     "shadow": "Shadow",
     "margins": "Safe margins (%)",
-    "margin": { "top": "Top", "right": "Right", "bottom": "Bottom", "left": "Left" },
+    "margin": {
+      "top": "Top",
+      "right": "Right",
+      "bottom": "Bottom",
+      "left": "Left"
+    },
     "transition": "Transition",
     "transitionKind": "Type",
     "transitions": {
@@ -381,7 +400,11 @@
     "sampleLine1": "Amazing grace, how sweet the sound",
     "sampleLine2": "that saved a wretch like me",
     "sampleFooter": "Public domain",
-    "sampleVerse": "For God so loved the world, that he gave his only begotten Son."
+    "sampleVerse": "For God so loved the world, that he gave his only begotten Son.",
+    "blur": "Blur (px)",
+    "kenBurns": "Slow pan and zoom (Ken Burns)",
+    "pickImage": "Find backgrounds…",
+    "pickImageTitle": "Find backgrounds"
   },
   "settings": {
     "outputs": {
@@ -454,13 +477,28 @@
         "operator": "Operator",
         "pastor": "Pastor",
         "stage": "Stage",
-        "congregation": "Congregation"
-      }
+        "congregation": "Congregation",
+        "musician": "Musician"
+      },
+      "pairingRole": "Role granted by the PIN",
+      "pairingRoleHint": "Whoever pairs with this PIN or QR gets this role."
     },
     "language": {
       "title": "Language",
       "intro": "Language of the operator interface.",
       "label": "Interface language"
+    },
+    "updates": {
+      "title": "Updates"
     }
+  },
+  "startup": {
+    "resumed": "Resumed where you left off: {{playlist}}.",
+    "resumedLive": "Resumed where you left off: {{playlist}}, with a slide on screen.",
+    "noService": "no service open",
+    "crashed": "HollyShow closed unexpectedly last time. Your session was restored.",
+    "dbRecovered": "The library was damaged and was restored from a backup.",
+    "closeBlocked": "Service mode is on: turn it off to close HollyShow.",
+    "monitorsChanged": "The display setup changed. Check your outputs: any that lost their screen were blacked out."
   }
 }

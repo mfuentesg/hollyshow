@@ -1,7 +1,8 @@
-import { Button, SwitchRow } from "@hollyshow/ui";
-import { useState } from "react";
+import { Button, Field, Select, SwitchRow } from "@hollyshow/ui";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useHost } from "../../api/context";
+import type { PairingRole } from "../../api/host";
 import { useNow } from "../../hooks/useNow";
 import { useToasts } from "../../hooks/useToasts";
 import { useOperator } from "../OperatorContext";
@@ -22,7 +23,17 @@ export function RemoteSettings() {
   const toasts = useToasts();
   const now = useNow(1000);
   const [busy, setBusy] = useState(false);
+  const [role, setRole] = useState<PairingRole>("operator");
   const { pairing, devices } = op;
+
+  useEffect(() => {
+    void host
+      .getSetting("remote.pairingRole")
+      .then((r) => {
+        if (r === "operator" || r === "pastor" || r === "musician" || r === "stage") setRole(r);
+      })
+      .catch(() => {});
+  }, [host]);
 
   const guard = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -51,13 +62,36 @@ export function RemoteSettings() {
       />
 
       {pairing?.enabled && (
+        <Field label={t("settings.remote.pairingRole")} hint={t("settings.remote.pairingRoleHint")}>
+          {(id) => (
+            <Select
+              id={id}
+              value={role}
+              disabled={busy}
+              onChange={(e) => {
+                const next = e.target.value as PairingRole;
+                setRole(next);
+                void guard(() => host.setPairingRole(next));
+              }}
+            >
+              {(["operator", "pastor", "musician", "stage"] as const).map((r) => (
+                <option key={r} value={r}>
+                  {t(`settings.remote.roles.${r}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      )}
+
+      {pairing?.enabled && (
         <section className="card pairing" aria-labelledby="pair-h">
           <h2 id="pair-h" className="card__title">
             {t("settings.remote.pairTitle")}
           </h2>
           <div className="row gap-16 wrap">
             <QrCode
-              value={pairing.url}
+              value={pairing.qrUrl ?? pairing.url}
               label={t("settings.remote.qrLabel", { url: pairing.url })}
             />
             <div className="stack">

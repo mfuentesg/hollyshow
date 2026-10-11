@@ -1,13 +1,15 @@
-import type {
-  Ack,
-  ApiUpdate,
-  Command,
-  HollyApi,
-  PresentationState,
-  QueryRequest,
-  QueryResult,
-  Update,
-  WireError,
+import {
+  MEDIA_COMMANDS,
+  type Ack,
+  type ApiUpdate,
+  type Command,
+  type HollyApi,
+  type MediaApi,
+  type PresentationState,
+  type QueryRequest,
+  type QueryResult,
+  type Update,
+  type WireError,
 } from "@hollyshow/protocol";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -28,7 +30,18 @@ export function createTauriApi(): HollyApi {
     else unlisten = u;
   });
 
+  const media: MediaApi = {
+    mediaSearch: (req) => invoke(MEDIA_COMMANDS.mediaSearch, { req }),
+    mediaCategories: () => invoke(MEDIA_COMMANDS.mediaCategories),
+    mediaDownload: (result, allowNoncommercial) =>
+      invoke(MEDIA_COMMANDS.mediaDownload, { result, allowNoncommercial }),
+    mediaList: () => invoke(MEDIA_COMMANDS.mediaList),
+    mediaRemove: (id) => invoke(MEDIA_COMMANDS.mediaRemove, { id }),
+    mediaCredits: (ids) => invoke(MEDIA_COMMANDS.mediaCredits, { ids }),
+  };
+
   return {
+    ...media,
     transport: "tauri",
     dispatch: (cmd: Command) => invoke<Ack>("dispatch", { id: crypto.randomUUID(), cmd }),
     query: async <Q extends QueryRequest>(query: Q) =>

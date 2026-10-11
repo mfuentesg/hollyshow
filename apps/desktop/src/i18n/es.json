@@ -1,5 +1,7 @@
 {
-  "app": { "name": "HollyShow" },
+  "app": {
+    "name": "HollyShow"
+  },
   "common": {
     "cancel": "Cancelar",
     "clear": "Borrar",
@@ -67,7 +69,11 @@
     "send": "Enviar",
     "mock": "Modo demostración (sin Tauri)"
   },
-  "stage": { "now": "Ahora", "next": "Siguiente", "message": "Mensaje" },
+  "stage": {
+    "now": "Ahora",
+    "next": "Siguiente",
+    "message": "Mensaje"
+  },
   "palette": {
     "title": "Paleta de comandos",
     "open": "Abrir búsqueda universal",
@@ -225,7 +231,11 @@
     "showLive": "Mostrar en vivo",
     "addToService": "Agregar al culto",
     "layout": "Disposición",
-    "layouts": { "columns": "Columnas", "stacked": "Apilado", "subtitle": "Subtítulo" },
+    "layouts": {
+      "columns": "Columnas",
+      "stacked": "Apilado",
+      "subtitle": "Subtítulo"
+    },
     "options": "Opciones",
     "optionsNote": "Se aplican a los próximos versículos que muestres.",
     "versePerSlide": "Un versículo por diapositiva",
@@ -331,7 +341,11 @@
     "name": "Nombre",
     "savedToast": "Tema «{{name}}» guardado",
     "align": "Alineación",
-    "aligns": { "left": "Izquierda", "center": "Centro", "right": "Derecha" },
+    "aligns": {
+      "left": "Izquierda",
+      "center": "Centro",
+      "right": "Derecha"
+    },
     "textColor": "Color del texto",
     "background": "Fondo",
     "backgroundKind": "Tipo de fondo",
@@ -357,7 +371,12 @@
     "uppercase": "Mayúsculas",
     "shadow": "Sombra",
     "margins": "Márgenes seguros (%)",
-    "margin": { "top": "Arriba", "right": "Derecha", "bottom": "Abajo", "left": "Izquierda" },
+    "margin": {
+      "top": "Arriba",
+      "right": "Derecha",
+      "bottom": "Abajo",
+      "left": "Izquierda"
+    },
     "transition": "Transición",
     "transitionKind": "Tipo",
     "transitions": {
@@ -381,7 +400,11 @@
     "sampleLine1": "Sublime gracia del Señor",
     "sampleLine2": "que a un pecador salvó",
     "sampleFooter": "Dominio público",
-    "sampleVerse": "Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito."
+    "sampleVerse": "Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito.",
+    "blur": "Desenfoque (px)",
+    "kenBurns": "Movimiento lento (Ken Burns)",
+    "pickImage": "Buscar fondos…",
+    "pickImageTitle": "Buscar fondos"
   },
   "settings": {
     "outputs": {
@@ -454,13 +477,28 @@
         "operator": "Operador",
         "pastor": "Pastor",
         "stage": "Escenario",
-        "congregation": "Congregación"
-      }
+        "congregation": "Congregación",
+        "musician": "Músico"
+      },
+      "pairingRole": "Rol que concede el PIN",
+      "pairingRoleHint": "Quien se empareje con este PIN o QR recibirá este rol."
     },
     "language": {
       "title": "Idioma",
       "intro": "Idioma de la interfaz del operador.",
       "label": "Idioma de la interfaz"
+    },
+    "updates": {
+      "title": "Actualizaciones"
     }
+  },
+  "startup": {
+    "resumed": "Retomamos donde estabas: {{playlist}}.",
+    "resumedLive": "Retomamos donde estabas: {{playlist}}, con una diapositiva en pantalla.",
+    "noService": "sin servicio abierto",
+    "crashed": "HollyShow se cerró de forma inesperada la última vez. Se restauró tu sesión.",
+    "dbRecovered": "La biblioteca estaba dañada y se restauró desde una copia de seguridad.",
+    "closeBlocked": "Modo culto activo: desactívalo para cerrar HollyShow.",
+    "monitorsChanged": "Cambió la configuración de pantallas. Revisa las salidas: las que perdieron su pantalla quedaron en negro."
   }
 }

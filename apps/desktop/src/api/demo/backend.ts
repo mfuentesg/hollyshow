@@ -691,6 +691,12 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
       pairing = { ...pairing, pin: String(100000 + ((418266 + pinCounter * 7919) % 900000)) };
       return pairing;
     },
+    async setPairingRole(role) {
+      settings.set("remote.pairingRole", role);
+      pinCounter += 1;
+      pairing = { ...pairing, pin: String(100000 + ((418266 + pinCounter * 7919) % 900000)) };
+      return pairing;
+    },
     async setRemoteEnabled(enabled) {
       pairing = { ...pairing, enabled };
       return pairing;
@@ -703,6 +709,9 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
     },
     async health(): Promise<HealthInfo> {
       return { fps: 60, droppedFrames: 0, cpuPercent: 14, ramMb: 310 };
+    },
+    async startupInfo() {
+      return { resumed: false, crashed: false, playlist: null, hadLive: false, dbRecovered: false };
     },
   };
 

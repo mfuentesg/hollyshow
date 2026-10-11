@@ -19,7 +19,7 @@ pub mod migrations;
 mod playlists;
 mod songs;
 
-pub use backup::{restore_backup, BackupInfo};
+pub use backup::{list_backup_files, restore_backup, BackupInfo};
 pub use devices::DeviceRecord;
 pub use library::{BibleExport, ImportMode, ImportReport, Library, LibraryOptions, UsageEntry};
 pub use songs::UsageRow;

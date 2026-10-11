@@ -24,9 +24,11 @@ hollyshow-app.workspace = true
 hollyshow-engine.workspace = true
 hollyshow-songs.workspace = true
 hollyshow-server.workspace = true
-# In-memory repositories until the SQLite store is wired in `state.rs`.
-hollyshow-storage-api = { workspace = true, features = ["testing"] }
-tauri = { version = "2", features = [] }
+hollyshow-bible.workspace = true
+hollyshow-media.workspace = true
+hollyshow-storage-api.workspace = true
+hollyshow-storage-sqlite.workspace = true
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-log = "2"
 log.workspace = true
@@ -35,3 +37,11 @@ serde_json.workspace = true
 tokio.workspace = true
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+base64 = "0.22"
+flate2 = "1"
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+keepawake = "0.6"
+
+[dev-dependencies]
+hollyshow-storage-api = { workspace = true, features = ["testing"] }
+tempfile = "3"

@@ -662,3 +662,29 @@ fn concurrent_use_through_shared_repos() {
     assert_eq!(store.song_count().unwrap(), 100);
     store.integrity_check().unwrap();
 }
+
+#[test]
+fn bible_order_is_persisted_and_ignores_unknown_codes() {
+    let store = Store::open_in_memory().unwrap();
+    for (i, c) in ["A", "B", "C"].iter().enumerate() {
+        store
+            .install_bible(&version(c, i as i64), &[verse("Gen", 1, 1, "x")])
+            .unwrap();
+    }
+    let codes = |s: &Store| -> Vec<String> {
+        BibleRepo::list_versions(s)
+            .unwrap()
+            .into_iter()
+            .map(|v| v.code.0)
+            .collect()
+    };
+    store
+        .set_bible_order(&[
+            VersionCode("C".into()),
+            VersionCode("nope".into()),
+            VersionCode("A".into()),
+        ])
+        .unwrap();
+    // Unlisted versions follow, keeping their relative order.
+    assert_eq!(codes(&store), ["C", "A", "B"]);
+}

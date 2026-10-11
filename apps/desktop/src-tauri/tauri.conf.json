@@ -5,7 +5,7 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm --filter remote build && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -23,20 +23,17 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
-      "devCsp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420"
+      "csp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost hollyshow-media: http://hollyshow-media.localhost https:; media-src 'self' blob: asset: http://asset.localhost hollyshow-media: http://hollyshow-media.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost hollyshow-media: http://hollyshow-media.localhost https:; media-src 'self' blob: asset: http://asset.localhost hollyshow-media: http://hollyshow-media.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/media/**", "$APPLOCALDATA/media/**"]
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "dmg",
-      "app",
-      "nsis",
-      "msi",
-      "deb",
-      "appimage"
-    ],
+    "targets": ["dmg", "app", "nsis", "msi", "deb", "appimage"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -58,17 +55,11 @@
       },
       "nsis": {
         "installMode": "both",
-        "languages": [
-          "Spanish",
-          "English"
-        ],
+        "languages": ["Spanish", "English"],
         "displayLanguageSelector": true
       },
       "wix": {
-        "language": [
-          "es-ES",
-          "en-US"
-        ]
+        "language": ["es-ES", "en-US"]
       }
     },
     "linux": {
@@ -79,14 +70,13 @@
         "bundleMediaFramework": false
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false,
+    "resources": ["resources/bibles/*.hsb.gz", "resources/bibles/SOURCES.md"]
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBBMTc4RkIzRjVGNzFDQzAKUldUQUhQZjFzNDhYQ2dyMEJEZTVKdC9vVmFzM0loYVlxNXZ5amo1UFBhaGJHSWorMXBwaHB4UjcK",
-      "endpoints": [
-        "https://github.com/mfuentesg/hollyshow/releases/latest/download/latest.json"
-      ],
+      "endpoints": ["https://github.com/mfuentesg/hollyshow/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
       }

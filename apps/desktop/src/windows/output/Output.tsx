@@ -2,7 +2,9 @@ import { SlideView, pickTheme, siblingSlides } from "@hollyshow/slide-renderer";
 import { Logo } from "@hollyshow/ui";
 import { useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { useApi } from "../../api/context";
+import { invoke } from "@tauri-apps/api/core";
+import { inTauri, useApi } from "../../api/context";
+import { FrameStats } from "./frameStats";
 import { absoluteIndex, directionBetween, frameFor, nextSlideAfter, positionLabel } from "./frame";
 import { useLivePresentation } from "./useLivePresentation";
 
@@ -15,6 +17,26 @@ function useTransparentPage(on: boolean) {
     els.forEach((e) => (e.style.background = "transparent"));
     return () => els.forEach((e, i) => (e.style.background = prev[i] ?? ""));
   }, [on]);
+}
+
+/** Tells the host how smoothly this window renders (shown in the operator footer). */
+function useFrameReporter() {
+  useEffect(() => {
+    if (!inTauri()) return;
+    const stats = new FrameStats();
+    let raf = 0;
+    let alive = true;
+    const loop = (now: number) => {
+      const report = stats.tick(now);
+      if (report) void invoke("report_output_stats", report).catch(() => {});
+      if (alive) raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
+  }, []);
 }
 
 /**
@@ -32,6 +54,7 @@ export function Output() {
   const frame = live ? frameFor(live.view, id) : null;
   const transparent = search.get("transparent") === "1" || frame?.kind === "lowerThird";
   useTransparentPage(transparent);
+  useFrameReporter();
 
   const cue = frame?.cue ?? null;
   const show = live?.show;

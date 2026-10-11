@@ -6,6 +6,7 @@ const TABS = [
   { to: "bible", key: "settings.bible.title" },
   { to: "remote", key: "settings.remote.title" },
   { to: "language", key: "settings.language.title" },
+  { to: "updates", key: "settings.updates.title" },
 ] as const;
 
 /** Settings shell: section list on the left, the active section on the right. */

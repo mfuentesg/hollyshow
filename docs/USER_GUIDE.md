@@ -38,6 +38,7 @@ HollyShow proyecta letras, versículos y medios durante el culto, y se controla 
 ## 6. Solución de problemas
 
 **El celular no abre la página o se desconecta**
+
 - Verifica que ambos estén en la misma red y subred; abre Remoto > Diagnóstico para ver la dirección y puerto que usa la app.
 - **Aislamiento de clientes («Client/AP isolation»):** muchos Wi-Fi de iglesias aíslan los dispositivos entre sí para que no se vean. Síntomas: el celular tiene internet pero no alcanza al computador. Soluciones: desactiva el aislamiento en el router/AP o usa una red/VLAN para producción; conecta el computador por cable al mismo router; o crea un router propio dedicado al audiovisual (lo más fiable); o comparte datos móviles desde el celular del operador al computador como último recurso.
 - Redes de invitados y de empresa suelen bloquear la comunicación entre dispositivos; usa una red privada.

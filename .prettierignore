@@ -7,3 +7,6 @@ apps/desktop/src-tauri/gen
 apps/desktop/src-tauri/icons
 docs/design
 docs/PLAN.md
+
+crates/media/tests/fixtures/
+crates/server/src/pages/

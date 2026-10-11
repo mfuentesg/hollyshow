@@ -26,10 +26,10 @@ También puedes lanzarlo a mano desde Actions > Release > Run workflow (usa la v
 
 Ajustes > Secrets and variables > Actions > New repository secret:
 
-| Secreto | Para qué |
-|---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | Clave privada minisign que firma los artefactos del actualizador. **Obligatorio**: `createUpdaterArtifacts` está activo y el build falla sin ella. |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Contraseña de esa clave (vacía si no tiene). |
+| Secreto                              | Para qué                                                                                                                                                                                                       |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY`          | Clave privada minisign que firma los artefactos del actualizador. **Obligatorio**: el release activa `createUpdaterArtifacts` (vía `tauri.release.conf.json`) y falla sin ella; el build local no la necesita. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Contraseña de esa clave (vacía si no tiene).                                                                                                                                                                   |
 
 La clave **pública** ya está en `tauri.conf.json` (`plugins.updater.pubkey`). La privada **nunca** se sube al repositorio.
 Si hay que regenerar el par: `pnpm --filter desktop tauri signer generate -w ~/.tauri/hollyshow.key`, actualiza `pubkey` y los
@@ -38,9 +38,10 @@ secretos. Las apps ya instaladas con la clave antigua no podrán actualizarse au
 ## Actualizador
 
 `tauri.conf.json` ya declara el endpoint `.../releases/latest/download/latest.json`; `tauri-action` genera y sube `latest.json`
-(`includeUpdaterJson`) con las firmas `.sig` de cada plataforma. TODO (fuera del alcance de esta compilación): registrar
-`tauri-plugin-updater` en el shell de Tauri y añadir el permiso `updater:default` en `capabilities/default.json` cuando se
-implemente la interfaz de actualización.
+(`includeUpdaterJson`) con las firmas `.sig` de cada plataforma. El shell ya registra `tauri-plugin-updater` y
+`tauri-plugin-process` (`src-tauri/src/updater.rs`, permisos en `capabilities/updater.json`, solo para la ventana del operador):
+comprueba a los 30 s de arrancar y cada 6 h, descarga en segundo plano y nunca reinicia con el modo culto activo ni con una salida en
+vivo (se instala al salir).
 
 ## Firma de código (opcional pero recomendada)
 

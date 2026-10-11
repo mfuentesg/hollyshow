@@ -9,6 +9,7 @@ import { cmd } from "../lib/cmd";
 import { addItem, newItem } from "../lib/playlistOps";
 import { matchesAll } from "../lib/text";
 import { useOperator } from "./OperatorContext";
+import { useCheckForUpdatesEntry } from "./update";
 import { useBibleSelection } from "./useBibleSelection";
 
 type Mode = "primary" | "live" | "alt";
@@ -42,6 +43,7 @@ export function CommandPalette({ onClose, onOpenTemplates, onOpenHelp }: Palette
   const [hits, setHits] = useState<BibleHit[]>([]);
   const [selection] = useBibleSelection(versions);
   const listId = useId();
+  const updateEntry = useCheckForUpdatesEntry();
   const lang = i18n.language.startsWith("en") ? "en" : "es";
   const q = query.trim();
   const ref = useMemo(() => (q ? parseReference(q, lang) : null), [q, lang]);
@@ -269,6 +271,16 @@ export function CommandPalette({ onClose, onOpenTemplates, onOpenHelp }: Palette
         run: go("/operator/settings/language"),
       },
       { id: "a:templates", group: "actions", label: t("palette.templates"), run: onOpenTemplates },
+      ...(updateEntry.disabled
+        ? []
+        : [
+            {
+              id: updateEntry.id,
+              group: "actions" as const,
+              label: updateEntry.label,
+              run: () => void updateEntry.run(),
+            },
+          ]),
       { id: "a:help", group: "actions", label: t("shortcuts.title"), hint: "?", run: onOpenHelp },
     ];
     const shownActions = q ? actions.filter((a) => matchesAll(a.label, q)) : actions.slice(0, 9);
@@ -278,7 +290,7 @@ export function CommandPalette({ onClose, onOpenTemplates, onOpenHelp }: Palette
       ...shownActions,
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, songs, hits, q, p.view, playlist, selection, lang, op.send, t]);
+  }, [ref, songs, hits, q, p.view, playlist, selection, lang, op.send, t, updateEntry]);
 
   useEffect(() => setActive(0), [q]);
   const activeIdx = Math.min(active, Math.max(0, entries.length - 1));
