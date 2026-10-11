@@ -30,6 +30,8 @@ pub struct MediaConfig {
     /// Base delay of the exponential backoff when the server sends no `Retry-After`.
     pub base_backoff: Duration,
     pub max_download_bytes: usize,
+    /// Host suffixes images may be downloaded from (see [`crate::http::DOWNLOAD_HOSTS`]).
+    pub download_hosts: Vec<String>,
 }
 
 impl Default for MediaConfig {
@@ -46,6 +48,10 @@ impl Default for MediaConfig {
             max_wait: Duration::from_secs(20),
             base_backoff: Duration::from_secs(1),
             max_download_bytes: 40 * 1024 * 1024,
+            download_hosts: crate::http::DOWNLOAD_HOSTS
+                .iter()
+                .map(|h| (*h).to_owned())
+                .collect(),
         }
     }
 }
@@ -230,11 +236,7 @@ impl<F: HttpFetcher> MediaClient<F> {
 
     /// Downloads an image file (no credentials are ever attached).
     pub async fn fetch_image(&self, url: &str) -> Result<Vec<u8>, MediaError> {
-        if !url.starts_with("https://") {
-            return Err(MediaError::InvalidDownload(
-                "only https downloads are allowed".into(),
-            ));
-        }
+        crate::http::check_download_url(url, &self.config.download_hosts)?;
         let req = HttpRequest {
             url: url.to_string(),
             headers: Vec::new(),
@@ -556,10 +558,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_hosts_outside_the_allow_list() {
+        let f = FakeFetcher::default().route("", vec![FakeFetcher::ok(b"x")]);
+        let c = client(f.clone());
+        for u in [
+            "https://169.254.169.254/latest/meta-data",
+            "https://intranet.example/a.jpg",
+            "https://localhost/a.jpg",
+        ] {
+            assert!(
+                matches!(c.fetch_image(u).await, Err(MediaError::InvalidDownload(_))),
+                "{u}"
+            );
+        }
+        assert!(f.requests.lock().unwrap().is_empty(), "nothing was fetched");
+        assert!(c
+            .fetch_image("https://upload.wikimedia.org/a.jpg")
+            .await
+            .is_ok());
+    }
+
+    #[tokio::test]
     async fn rejects_non_https_downloads() {
         let c = client(FakeFetcher::default());
         assert!(matches!(
-            c.fetch_image("http://example.org/a.jpg").await,
+            c.fetch_image("http://upload.wikimedia.org/a.jpg").await,
             Err(MediaError::InvalidDownload(_))
         ));
         assert!(matches!(

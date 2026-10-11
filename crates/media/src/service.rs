@@ -117,7 +117,7 @@ mod tests {
             .route("api.openverse.org", vec![FakeFetcher::ok(ov)])
             .route("example.org/2/full.jpg", vec![FakeFetcher::ok(&img)]);
         let dir = tempfile::tempdir().unwrap();
-        let svc = MediaService::with_fetcher(f, dir.path(), MediaConfig::default()).unwrap();
+        let svc = MediaService::with_fetcher(f, dir.path(), crate::library::tests::test_config()).unwrap();
         let res = svc
             .search(SearchRequest {
                 query: "cruz".into(),

@@ -57,6 +57,22 @@ fn extension(fmt: ImageFormat) -> Option<&'static str> {
     }
 }
 
+/// Largest side and decoder allocation accepted: a small file can declare a huge canvas.
+const MAX_SIDE: u32 = 12_000;
+const MAX_DECODE_ALLOC: u64 = 512 * 1024 * 1024;
+
+fn decode_bounded(bytes: &[u8], fmt: ImageFormat) -> Result<image::DynamicImage, MediaError> {
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), fmt);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_SIDE);
+    limits.max_image_height = Some(MAX_SIDE);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    reader.limits(limits);
+    reader
+        .decode()
+        .map_err(|e| MediaError::InvalidDownload(e.to_string()))
+}
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), MediaError> {
     let tmp = path.with_extension("part");
     fs::write(&tmp, bytes)?;
@@ -166,8 +182,7 @@ impl MediaLibrary {
         let ext = extension(fmt).ok_or_else(|| {
             MediaError::InvalidDownload(format!("unsupported image format {fmt:?}"))
         })?;
-        let img = image::load_from_memory_with_format(bytes, fmt)
-            .map_err(|e| MediaError::InvalidDownload(e.to_string()))?;
+        let img = decode_bounded(bytes, fmt)?;
         if img.width() < MIN_STORED_WIDTH {
             return Err(MediaError::InvalidDownload(format!(
                 "image too small ({}x{})",
@@ -295,6 +310,13 @@ pub(crate) mod tests {
         out
     }
 
+    /// Default configuration that also trusts the fake image host used by the fixtures.
+    pub fn test_config() -> MediaConfig {
+        let mut c = MediaConfig::default();
+        c.download_hosts.push("example.org".into());
+        c
+    }
+
     pub fn sample(id: &str, license: &str) -> MediaResult {
         MediaResult {
             source: ImageSource::Openverse,
@@ -311,6 +333,19 @@ pub(crate) mod tests {
             attribution: "\"Cruz\" by Ana is licensed under CC BY 4.0.".into(),
             source_page: "https://example.org/page".into(),
         }
+    }
+
+    #[test]
+    fn oversized_canvases_are_rejected_before_decoding() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = MediaLibrary::new(dir.path()).unwrap();
+        // A tiny PNG whose header declares 20000x20000.
+        let mut bytes = png(900, 500);
+        bytes[16..20].copy_from_slice(&20_000u32.to_be_bytes());
+        bytes[20..24].copy_from_slice(&20_000u32.to_be_bytes());
+        let err = lib.store(&sample("big", "CC0 1.0"), &bytes).unwrap_err();
+        assert!(matches!(err, MediaError::InvalidDownload(_)), "{err}");
+        assert!(lib.list().unwrap().is_empty());
     }
 
     #[test]
@@ -398,7 +433,7 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let lib = MediaLibrary::new(dir.path()).unwrap();
         let f = FakeFetcher::default().route("example.org", vec![FakeFetcher::ok(&png(1000, 600))]);
-        let client = MediaClient::new(f.clone(), MediaConfig::default());
+        let client = MediaClient::new(f.clone(), test_config());
         let r = sample("dl", "CC BY 4.0");
         let a = lib
             .download(&client, &r, &LicensePolicy::default())
