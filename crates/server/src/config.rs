@@ -3,6 +3,8 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+const DAY: u64 = 24 * 60 * 60;
+
 /// Default TCP port of the LAN server.
 pub const DEFAULT_PORT: u16 = 7420;
 
@@ -46,6 +48,27 @@ pub struct ServerConfig {
     /// HTTP API requests per address: burst and sustained rate.
     pub http_burst: u32,
     pub http_per_sec: f64,
+    /// Raw TCP connections of every kind (half-open, idle, HTTP, WebSocket) accepted at once.
+    /// Beyond this the socket is closed at `accept`, before any bytes are read, so a flood from
+    /// the Wi-Fi cannot exhaust file descriptors.
+    pub max_open_sockets: usize,
+    /// Raw TCP connections one client address may hold open.
+    pub max_sockets_per_ip: usize,
+    /// How long a client may take to send the headers of one HTTP request (slowloris guard).
+    pub header_read_timeout: Duration,
+    /// How long a device's command-dedupe window outlives its socket, so a command resent after
+    /// a reconnect is recognised as a duplicate instead of being applied twice.
+    pub session_grace: Duration,
+    /// A paired device unused for this long must pair again.
+    pub device_idle_expiry: Duration,
+    /// A paired device must pair again this long after it first did, however active.
+    pub device_max_age: Duration,
+    /// A session token older than this is replaced by a fresh one when the device reconnects.
+    pub token_rotate_after: Duration,
+    /// Minimum spacing between writes of a device's `last seen` stamp to storage.
+    pub last_seen_write_interval: Duration,
+    /// How often the supervisor re-reads the machine's LAN addresses.
+    pub network_poll: Duration,
 }
 
 impl Default for ServerConfig {
@@ -71,6 +94,15 @@ impl Default for ServerConfig {
             frame_burst: 60,
             http_burst: 30,
             http_per_sec: 10.0,
+            max_open_sockets: 1024,
+            max_sockets_per_ip: 64,
+            header_read_timeout: Duration::from_secs(10),
+            session_grace: Duration::from_secs(60),
+            device_idle_expiry: Duration::from_secs(30 * DAY),
+            device_max_age: Duration::from_secs(180 * DAY),
+            token_rotate_after: Duration::from_secs(7 * DAY),
+            last_seen_write_interval: Duration::from_secs(5 * 60),
+            network_poll: Duration::from_secs(5),
         }
     }
 }

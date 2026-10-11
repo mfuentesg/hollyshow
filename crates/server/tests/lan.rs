@@ -323,7 +323,11 @@ async fn http_pairing_with_the_qr_token_is_single_use_and_devices_can_be_managed
     )
     .await;
     assert_eq!(status, 200, "{body}");
-    assert!(body["qrSvg"].as_str().unwrap().contains("<svg"));
+    // A QR is only drawn when a phone could reach the address (CI machines may have no LAN).
+    assert_eq!(
+        body["qrSvg"].as_str().unwrap().contains("<svg"),
+        body["networkAvailable"] == true
+    );
     assert_eq!(body["pin"].as_str().unwrap().len(), 6);
     let pin = body["pin"].as_str().unwrap().to_owned();
     let (_, stage) = http(
@@ -811,4 +815,124 @@ async fn shutdown_closes_open_sockets_promptly() {
         "shutdown"
     );
     assert!(started.elapsed() < Duration::from_secs(3));
+}
+
+// ---- idempotency across reconnects ---------------------------------------------------------
+
+#[tokio::test]
+async fn a_command_resent_after_reconnecting_is_recognised_as_a_duplicate() {
+    let h = start().await;
+    let token = pair(&h, Role::Operator, "Operador").await;
+    let (mut ws, _) = join(&h, "operator", Some(&token)).await;
+    send(&mut ws, next_cmd("c-abc-1", None)).await;
+    let first = ack(&mut ws, "c-abc-1").await;
+    assert_eq!(first["duplicate"], false);
+    let advanced = h.service.engine().with_state(|s| s.version);
+    // The ack was "lost": the socket drops and the client resends the same id on a new socket.
+    drop(ws);
+    let (mut ws2, _) = join(&h, "operator", Some(&token)).await;
+    send(&mut ws2, next_cmd("c-abc-1", None)).await;
+    let again = ack(&mut ws2, "c-abc-1").await;
+    assert_eq!(again["duplicate"], true, "{again}");
+    assert_eq!(again["version"], first["version"]);
+    assert_eq!(h.service.engine().with_state(|s| s.version), advanced);
+    h.running.shutdown().await;
+}
+
+#[tokio::test]
+async fn devices_do_not_share_dedupe_windows_and_the_window_ends_after_the_grace() {
+    let h = start_with(|c| c.session_grace = Duration::from_millis(200)).await;
+    let ta = pair(&h, Role::Operator, "A").await;
+    let tb = pair(&h, Role::Operator, "B").await;
+    let (mut a, _) = join(&h, "operator", Some(&ta)).await;
+    let (mut b, _) = join(&h, "operator", Some(&tb)).await;
+    send(&mut a, next_cmd("c-1", None)).await;
+    assert_eq!(ack(&mut a, "c-1").await["duplicate"], false);
+    // Same id from another device is a different command.
+    send(&mut b, next_cmd("c-1", None)).await;
+    assert_eq!(ack(&mut b, "c-1").await["duplicate"], false);
+    drop(a);
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let (mut a2, _) = join(&h, "operator", Some(&ta)).await;
+    send(&mut a2, next_cmd("c-1", None)).await;
+    assert_eq!(
+        ack(&mut a2, "c-1").await["duplicate"],
+        false,
+        "the window was released once the grace ran out"
+    );
+    h.running.shutdown().await;
+}
+
+// ---- connection flood / slowloris ----------------------------------------------------------
+
+/// True when the peer closes the socket (EOF or reset) within `wait`.
+async fn closed_by_peer(s: &mut TcpStream, wait: Duration) -> bool {
+    let mut buf = [0u8; 64];
+    match tokio::time::timeout(wait, s.read(&mut buf)).await {
+        Ok(Ok(0) | Err(_)) => true,
+        Ok(Ok(_)) | Err(_) => false,
+    }
+}
+
+#[tokio::test]
+async fn silent_tcp_connections_cannot_exhaust_the_server() {
+    let h = start_with(|c| {
+        c.max_sockets_per_ip = 5;
+        c.header_read_timeout = Duration::from_secs(30);
+    })
+    .await;
+    let mut idle = Vec::new();
+    for _ in 0..5 {
+        idle.push(TcpStream::connect(h.addr).await.unwrap());
+    }
+    // Further sockets from the same address are closed at accept, before any byte is read.
+    let mut extra = TcpStream::connect(h.addr).await.unwrap();
+    assert!(closed_by_peer(&mut extra, Duration::from_secs(2)).await);
+    // The held ones are still open (the server did not drop them to make room).
+    assert!(!closed_by_peer(&mut idle[0], Duration::from_millis(200)).await);
+    // Releasing the idle sockets frees the budget again.
+    drop(idle);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let (status, body) = http(h.addr, "GET", "/health", None, None).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["ok"], true);
+    h.running.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_client_dribbling_request_headers_is_cut_off() {
+    let h = start_with(|c| c.header_read_timeout = Duration::from_millis(300)).await;
+    let mut s = TcpStream::connect(h.addr).await.unwrap();
+    s.write_all(b"GET /health HTTP/1.1\r\nHost: x\r\nX-Slow: ")
+        .await
+        .unwrap();
+    assert!(
+        closed_by_peer(&mut s, Duration::from_secs(3)).await,
+        "an unfinished header block must not hold the connection open"
+    );
+    // A well-behaved client is unaffected.
+    assert_eq!(http(h.addr, "GET", "/health", None, None).await.0, 200);
+    h.running.shutdown().await;
+}
+
+#[tokio::test]
+async fn page_loads_and_websocket_upgrades_are_rate_limited_per_address() {
+    let h = start_with(|c| {
+        c.http_burst = 1; // web budget is 4x
+        c.http_per_sec = 0.0;
+    })
+    .await;
+    let mut limited = false;
+    for _ in 0..8 {
+        if http(h.addr, "GET", "/", None, None).await.0 == 429 {
+            limited = true;
+            break;
+        }
+    }
+    assert!(limited, "static routes share the per-address limiter");
+    // /health stays open for monitoring.
+    assert_eq!(http(h.addr, "GET", "/health", None, None).await.0, 200);
+    let r = tokio_tungstenite::connect_async(format!("ws://{}/ws", h.addr)).await;
+    assert!(r.is_err(), "the upgrade is limited too");
+    h.running.shutdown().await;
 }

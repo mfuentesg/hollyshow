@@ -28,12 +28,14 @@ qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 sha2 = "0.11.0"
 getrandom = "0.4.3"
 futures-util = "0.3.34"
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio", "server"] }
+tower.workspace = true
 
 [dev-dependencies]
 hollyshow-engine.workspace = true
 hollyshow-songs.workspace = true
 hollyshow-storage-api = { workspace = true, features = ["testing"] }
-tower.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 http-body-util = "0.1"
 tokio-tungstenite = "0.30.0"

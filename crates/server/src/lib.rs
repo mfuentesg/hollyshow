@@ -39,6 +39,16 @@
 //! * `POST /api/connections/{id}/kick` `{revoke?: bool}` (Operator): "expulsar".
 //! * `GET /api/diagnostics`: all local IPs, per-address port reachability, mDNS state and hints.
 //!
+//! # Transport and session security
+//!
+//! The LAN transport is plain HTTP/WS: session tokens and the show travel in cleartext, so pair
+//! devices only on a Wi-Fi you trust (the pairing screen says so). Tokens are hashed at rest,
+//! expire after 30 idle days / 180 days overall, and are rotated on reconnect once a week (the
+//! new token arrives in `welcome.token`). Raw sockets are budgeted (global and per address), HTTP
+//! headers must arrive within `header_read_timeout`, and every route family has a per-address
+//! rate limit. A paired device keeps one command-dedupe window across reconnects (`dev-<id>`),
+//! released `session_grace` after its last socket closes.
+//!
 //! TODO(post-v1): HTTPS with a local CA (PLAN §5.1) and WebRTC/QUIC transports are out of scope.
 
 mod assets;
@@ -50,6 +60,7 @@ mod mdns;
 mod net;
 mod pairing;
 mod ratelimit;
+mod serve;
 mod shared;
 mod util;
 mod ws;
@@ -66,6 +77,7 @@ use hollyshow_app::AppService;
 use hollyshow_core::Role;
 use shared::Shared;
 use std::io;
+use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -94,7 +106,8 @@ impl Server {
     }
 
     /// The HTTP + WebSocket routes. Serve it with
-    /// `into_make_service_with_connect_info::<net::Peer>()`; [`Server::start`] does that.
+    /// a `ConnectInfo<net::Peer>` extension on every request (`Extension(ConnectInfo(Peer(addr)))`);
+    /// [`Server::start`] does that.
     pub fn router(&self) -> Router {
         http::routes(self.shared.clone())
     }
@@ -116,48 +129,15 @@ impl Server {
             .store(addr.port(), std::sync::atomic::Ordering::Relaxed);
         self.shared.shutdown.send_replace(false);
 
-        let mdns = if cfg.mdns {
-            let ips = net::lan_ipv4();
-            if ips.is_empty() {
-                log::info!("no LAN address found: skipping mDNS");
-                None
-            } else {
-                match mdns::Mdns::advertise(&cfg.server_name, addr.port(), &ips) {
-                    Ok(m) => {
-                        self.shared
-                            .mdns_active
-                            .store(true, std::sync::atomic::Ordering::Relaxed);
-                        Some(m)
-                    }
-                    Err(e) => {
-                        log::warn!("mDNS advertisement failed (the server still works by IP): {e}");
-                        None
-                    }
-                }
-            }
-        } else {
-            None
-        };
-
-        let listener = net::PrivateListener::new(listener, cfg.allow_public_peers);
-        let make = self
-            .router()
-            .into_make_service_with_connect_info::<net::Peer>();
-        let mut stop = self.shared.shutdown.subscribe();
-        let join = tokio::spawn(async move {
-            let served = axum::serve(listener, make).with_graceful_shutdown(async move {
-                let _ = stop.wait_for(|down| *down).await;
-            });
-            if let Err(e) = served.await {
-                log::error!("LAN server stopped: {e}");
-            }
-        });
+        let router = self.router();
+        let join = tokio::spawn(serve::serve(listener, router, self.shared.clone()));
+        let supervisor = tokio::spawn(supervise_network(self.shared.clone(), addr.port()));
         log::info!("LAN server listening on {addr}");
         Ok(RunningServer {
             addr,
             shared: self.shared.clone(),
             join: Some(join),
-            _mdns: mdns,
+            supervisor: Some(supervisor),
         })
     }
 
@@ -201,6 +181,11 @@ impl Server {
         http::diagnose(&self.shared, None).await
     }
 
+    /// Whether the machine has a LAN address right now (`false`: show "no network", not a QR).
+    pub fn has_network(&self) -> bool {
+        http::has_network()
+    }
+
     /// Base URLs a phone can use (`http://192.168.1.20:7420`, `http://hollyshow.local:7420`).
     pub fn urls(&self) -> Vec<String> {
         http::base_urls(&self.shared)
@@ -213,7 +198,7 @@ pub struct RunningServer {
     addr: SocketAddr,
     shared: Arc<Shared>,
     join: Option<JoinHandle<()>>,
-    _mdns: Option<mdns::Mdns>,
+    supervisor: Option<JoinHandle<()>>,
 }
 
 impl RunningServer {
@@ -227,6 +212,9 @@ impl RunningServer {
         self.shared
             .mdns_active
             .store(false, std::sync::atomic::Ordering::Relaxed);
+        if let Some(sup) = self.supervisor.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(2), sup).await;
+        }
         if let Some(join) = self.join.take() {
             if tokio::time::timeout(Duration::from_secs(5), join)
                 .await
@@ -236,6 +224,59 @@ impl RunningServer {
             }
         }
     }
+}
+
+/// Keeps the machine's LAN addresses and the mDNS announcement in step. Phones keep resolving
+/// `hollyshow.local` after DHCP renewals, Wi-Fi drops and a PC that booted before its Wi-Fi came
+/// up: the address set is re-read every `network_poll` and the service is re-announced (or
+/// withdrawn when the machine is offline) whenever it changes.
+async fn supervise_network(shared: Arc<Shared>, port: u16) {
+    use std::sync::atomic::Ordering::Relaxed;
+    let cfg = &shared.config;
+    let mut stop = shared.shutdown.subscribe();
+    let mut mdns: Option<mdns::Mdns> = None;
+    let mut last: Option<Vec<IpAddr>> = None;
+    loop {
+        if cfg.mdns {
+            let addrs = tokio::task::spawn_blocking(net::lan_addrs)
+                .await
+                .unwrap_or_default();
+            let ips = net::mdns_ips(&addrs);
+            if last.as_ref() != Some(&ips) {
+                if ips.is_empty() {
+                    log::info!("no LAN address: mDNS withdrawn until the network returns");
+                } else {
+                    log::info!("LAN addresses changed: advertising {ips:?}");
+                }
+                match mdns.as_mut() {
+                    Some(m) => {
+                        if let Err(e) = m.set_addresses(&ips) {
+                            log::warn!("mDNS update failed: {e}");
+                        }
+                    }
+                    None if !ips.is_empty() => {
+                        match mdns::Mdns::advertise(&cfg.server_name, port, &ips) {
+                            Ok(m) => mdns = Some(m),
+                            Err(e) => log::warn!(
+                                "mDNS advertisement failed (the server still works by IP): {e}"
+                            ),
+                        }
+                    }
+                    None => {}
+                }
+                shared.mdns_active.store(
+                    mdns.as_ref().is_some_and(mdns::Mdns::is_advertising),
+                    Relaxed,
+                );
+                last = Some(ips);
+            }
+        }
+        tokio::select! {
+            () = tokio::time::sleep(cfg.network_poll) => {}
+            _ = stop.wait_for(|down| *down) => break,
+        }
+    }
+    shared.mdns_active.store(false, Relaxed);
 }
 
 /// Convenience: the routes for `app` with no host handle (tests, embedding). Needs

@@ -90,13 +90,24 @@ export function RemoteSettings() {
             {t("settings.remote.pairTitle")}
           </h2>
           <div className="row gap-16 wrap">
-            <QrCode
-              value={pairing.qrUrl ?? pairing.url}
-              label={t("settings.remote.qrLabel", { url: pairing.url })}
-            />
+            {pairing.networkAvailable === false ? (
+              <p className="muted" role="alert">
+                {t("settings.remote.noNetwork")}
+              </p>
+            ) : (
+              <QrCode
+                value={pairing.qrUrl ?? pairing.url}
+                label={t("settings.remote.qrLabel", { url: pairing.url })}
+              />
+            )}
             <div className="stack">
               <span className="muted small">{t("settings.remote.url")}</span>
               <span className="mono strong">{pairing.url}</span>
+              {(pairing.urls?.length ?? 0) > 1 && (
+                <span className="muted small">
+                  {t("settings.remote.otherUrls", { urls: pairing.urls?.slice(1).join(" · ") })}
+                </span>
+              )}
               <span className="muted small">PIN</span>
               <span className="pin mono" aria-label={`PIN ${pairing.pin.split("").join(" ")}`}>
                 {pairing.pin.length === 6
@@ -119,6 +130,7 @@ export function RemoteSettings() {
               </Button>
             </div>
           </div>
+          <p className="muted small">{t("settings.remote.cleartext")}</p>
         </section>
       )}
 

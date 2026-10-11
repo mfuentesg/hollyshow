@@ -18,6 +18,10 @@ pub struct Shared {
     pub conns: Arc<Connections>,
     pub http_limiter: IpLimiter,
     pub hello_limiter: IpLimiter,
+    /// Page loads, OBS pages and WebSocket upgrades (the JSON API has its own `http_limiter`).
+    pub web_limiter: IpLimiter,
+    /// Raw TCP connection budget (total and per address).
+    pub sockets: crate::net::SocketLimiter,
     /// Flips to `true` when the server is shutting down; sockets close promptly.
     pub shutdown: watch::Sender<bool>,
     /// Actual listening port (differs from `config.bind` when that asked for port 0).
@@ -36,7 +40,11 @@ impl Shared {
                 config.max_failures_per_ip,
                 config.lockout,
             ),
-            devices: DeviceStore::load(settings, config.max_devices),
+            devices: DeviceStore::load_with(
+                settings,
+                config.max_devices,
+                crate::devices::Policy::from_config(&config),
+            ),
             conns: Connections::new(Limits {
                 congregation: config.max_congregation,
                 outputs: config.max_outputs,
@@ -45,6 +53,11 @@ impl Shared {
             http_limiter: IpLimiter::new(config.http_burst, config.http_per_sec),
             // Handshakes are rarer than frames; a reconnect storm still fits the burst.
             hello_limiter: IpLimiter::new(20, 2.0),
+            web_limiter: IpLimiter::new(config.http_burst * 4, config.http_per_sec * 4.0),
+            sockets: crate::net::SocketLimiter::new(
+                config.max_open_sockets,
+                config.max_sockets_per_ip,
+            ),
             shutdown,
             port: AtomicU16::new(config.bind.port()),
             mdns_active: AtomicBool::new(false),

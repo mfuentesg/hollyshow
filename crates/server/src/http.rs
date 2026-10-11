@@ -39,16 +39,25 @@ pub fn routes(shared: Arc<Shared>) -> Router {
             api_rate_limit,
         ));
 
-    Router::new()
-        .route("/health", get(health))
+    // Page loads, OBS pages and WebSocket upgrades share one per-address bucket, larger than the
+    // API's because a page load fetches several assets.
+    let web = Router::new()
         .route("/ws", get(ws_upgrade))
         .route("/output/full", get(|| async { output_page("full") }))
         .route(
             "/output/lower-third",
             get(|| async { output_page("lower-third") }),
         )
-        .nest("/api", api)
         .fallback(assets::serve)
+        .layer(middleware::from_fn_with_state(
+            shared.clone(),
+            web_rate_limit,
+        ));
+
+    Router::new()
+        .route("/health", get(health))
+        .nest("/api", api)
+        .merge(web)
         .with_state(shared)
 }
 
@@ -100,7 +109,25 @@ async fn api_rate_limit(
     req: Request,
     next: Next,
 ) -> Response {
-    if !s.http_limiter.check(addr.ip()) {
+    rate_limited(&s.http_limiter, addr, req, next).await
+}
+
+async fn web_rate_limit(
+    State(s): State<Arc<Shared>>,
+    ConnectInfo(Peer(addr)): ConnectInfo<Peer>,
+    req: Request,
+    next: Next,
+) -> Response {
+    rate_limited(&s.web_limiter, addr, req, next).await
+}
+
+async fn rate_limited(
+    limiter: &crate::ratelimit::IpLimiter,
+    addr: SocketAddr,
+    req: Request,
+    next: Next,
+) -> Response {
+    if !limiter.check(addr.ip()) {
         return ApiError::new(
             StatusCode::TOO_MANY_REQUESTS,
             "rate_limited",
@@ -246,18 +273,23 @@ pub struct PairingOffer {
     pub expires_in_secs: u64,
     /// Every URL a phone could open to pair (one per LAN address, plus `hollyshow.local`).
     pub urls: Vec<String>,
-    /// SVG of the QR for the first URL.
+    /// SVG of the QR for the first URL; empty when the machine has no LAN address (a QR for
+    /// `127.0.0.1` would be useless to a phone).
     pub qr_svg: String,
+    /// Whether any LAN address exists. When `false`, `urls` only holds the loopback address and
+    /// the UI should say "no network" instead of showing a QR.
+    pub network_available: bool,
 }
 
-/// Base URLs (`http://ip:port`) at which this server is reachable on the LAN.
+/// Base URLs (`http://ip:port`) at which this server is reachable on the LAN, best first (the
+/// default-route interface, then other real adapters, then virtual ones; see
+/// [`net::rank_lan`]). Without any LAN address it is the loopback URL only; check
+/// [`has_network`] to tell.
 pub fn base_urls(s: &Shared) -> Vec<String> {
     let port = s.port.load(Ordering::Relaxed);
-    let mut urls: Vec<String> = net::lan_ipv4()
-        .iter()
-        .map(|ip| format!("http://{ip}:{port}"))
-        .collect();
-    if s.mdns_active.load(Ordering::Relaxed) {
+    let ips = net::lan_ipv4();
+    let mut urls: Vec<String> = ips.iter().map(|ip| format!("http://{ip}:{port}")).collect();
+    if s.mdns_active.load(Ordering::Relaxed) && !ips.is_empty() {
         urls.push(format!("http://{}:{port}", mdns::HOSTNAME));
     }
     if urls.is_empty() {
@@ -266,13 +298,23 @@ pub fn base_urls(s: &Shared) -> Vec<String> {
     urls
 }
 
+/// Whether the machine currently has an address a phone could reach.
+pub fn has_network() -> bool {
+    !net::lan_ipv4().is_empty()
+}
+
 pub fn offer(s: &Shared, role: Role) -> Result<PairingOffer, PairError> {
     let o = s.pairing.create_offer(role)?;
     let urls: Vec<String> = base_urls(s)
         .into_iter()
         .map(|b| format!("{b}/?pair={}", o.token))
         .collect();
-    let qr_svg = qr_svg(urls.first().map_or("", String::as_str));
+    let network_available = has_network();
+    let qr_svg = if network_available {
+        qr_svg(urls.first().map_or("", String::as_str))
+    } else {
+        String::new()
+    };
     Ok(PairingOffer {
         pin: o.pin,
         token: o.token,
@@ -280,6 +322,7 @@ pub fn offer(s: &Shared, role: Role) -> Result<PairingOffer, PairError> {
         expires_in_secs: o.expires_in.as_secs(),
         urls,
         qr_svg,
+        network_available,
     })
 }
 

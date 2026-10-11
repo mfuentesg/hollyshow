@@ -49,6 +49,8 @@ struct Admitted {
     new_token: Option<String>,
     protocol: u32,
     kind: ConnKind,
+    /// Paired device behind the socket; `None` for anonymous clients.
+    device_id: Option<String>,
 }
 
 /// Authenticates a `hello`: token resume, PIN pairing or anonymous congregation/output access.
@@ -74,9 +76,14 @@ fn admit(
 
     let (granted, device_id, kind, new_token) = if let Some(token) = token {
         match shared.devices.authenticate(token) {
-            Some(d) => {
-                name = d.name.clone();
-                (d.role, Some(d.id), ConnKind::Paired, None)
+            Some(a) => {
+                name = a.device.name.clone();
+                (
+                    a.device.role,
+                    Some(a.device.id),
+                    ConnKind::Paired,
+                    a.new_token,
+                )
             }
             // 256-bit tokens cannot be guessed, so this does not feed the PIN lockout (a phone
             // whose token was revoked would otherwise lock itself out of re-pairing). The
@@ -124,7 +131,7 @@ fn admit(
 
     let guard = shared
         .conns
-        .register(ip, device_id, name, granted, kind, now)
+        .register(ip, device_id.clone(), name, granted, kind, now)
         .map_err(|r| match r {
             Refused::Full => refuse("capacity", "el servidor alcanzo su limite de conexiones"),
             Refused::Banned => refuse("kicked", "dispositivo expulsado temporalmente"),
@@ -135,6 +142,7 @@ fn admit(
         new_token,
         protocol,
         kind,
+        device_id,
     })
 }
 
@@ -221,6 +229,7 @@ pub async fn run(shared: Arc<Shared>, ip: IpAddr, mut socket: WebSocket) {
         new_token,
         protocol,
         kind,
+        device_id,
     } = match admitted {
         Ok(Ok(a)) => a,
         Ok(Err(error)) => {
@@ -236,7 +245,13 @@ pub async fn run(shared: Arc<Shared>, ip: IpAddr, mut socket: WebSocket) {
         }
     };
 
-    let session = SessionId::new(format!("ws-{}", guard.id));
+    // A paired device keeps one session identity across sockets, so a command resent after a
+    // reconnect hits the same dedupe window. Anonymous clients cannot send commands and get a
+    // per-socket identity.
+    let session = SessionId::new(match &device_id {
+        Some(id) => format!("dev-{id}"),
+        None => format!("ws-{}", guard.id),
+    });
     let ctx = ClientCtx::new(session.clone(), role);
     let service = shared.service.clone();
 
@@ -254,7 +269,8 @@ pub async fn run(shared: Arc<Shared>, ip: IpAddr, mut socket: WebSocket) {
     if !send(&mut socket, &shared, &welcome).await
         || !send(&mut socket, &shared, &service.snapshot_msg(role)).await
     {
-        service.engine().end_session(&session);
+        drop(guard);
+        release_session(&shared, &session, device_id);
         return;
     }
     log::info!(
@@ -272,7 +288,36 @@ pub async fn run(shared: Arc<Shared>, ip: IpAddr, mut socket: WebSocket) {
         &mut shutdown,
     )
     .await;
-    service.engine().end_session(&session);
+    release_session(&shared, &session, device_id);
+}
+
+/// Forgets a socket's dedupe window. A paired device's window outlives its socket for
+/// `session_grace` (and is kept while another socket of the device is open), which is what makes
+/// a command resent after a dropped connection idempotent.
+fn release_session(shared: &Arc<Shared>, session: &SessionId, device_id: Option<String>) {
+    let engine = shared.service.engine().clone();
+    let Some(device_id) = device_id else {
+        engine.end_session(session);
+        return;
+    };
+    let grace = shared.config.session_grace;
+    if grace.is_zero() {
+        if !shared.conns.is_connected(&device_id) {
+            engine.end_session(session);
+        }
+        return;
+    }
+    let (shared, session) = (shared.clone(), session.clone());
+    let mut stop = shared.shutdown.subscribe();
+    tokio::spawn(async move {
+        tokio::select! {
+            () = tokio::time::sleep(grace) => {}
+            _ = stop.wait_for(|down| *down) => {}
+        }
+        if !shared.conns.is_connected(&device_id) {
+            engine.end_session(&session);
+        }
+    });
 }
 
 async fn first_text(socket: &mut WebSocket) -> Option<String> {
