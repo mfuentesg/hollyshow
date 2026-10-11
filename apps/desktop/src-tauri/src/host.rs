@@ -258,7 +258,10 @@ pub async fn import_library(
         };
         // Rebuilds the open service (its songs may have changed) and tells every client.
         let report = inner.app.write_library(LibraryScope::Songs, || {
-            inner.store.import_library_json(&json, mode).map_err(storage)
+            inner
+                .store
+                .import_library_json(&json, mode)
+                .map_err(storage)
         })?;
         inner.app.library_changed(LibraryScope::Themes);
         if report.bibles > 0 {

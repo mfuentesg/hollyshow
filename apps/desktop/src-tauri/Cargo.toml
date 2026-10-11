@@ -42,7 +42,9 @@ flate2 = "1"
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 keepawake = "0.6"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+rfd = "0.15"
 
 [dev-dependencies]
+rusqlite.workspace = true
 hollyshow-storage-api = { workspace = true, features = ["testing"] }
 tempfile = "3"

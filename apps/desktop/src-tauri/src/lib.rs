@@ -10,6 +10,7 @@ mod media;
 mod power;
 mod recovery;
 mod remote;
+mod startup;
 mod state;
 mod updater;
 mod windows;
@@ -79,7 +80,7 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }));
-    let app = updater::plugins(builder)
+    let built = updater::plugins(builder)
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, media::handle)
         .on_window_event(windows::on_window_event)
         .invoke_handler(tauri::generate_handler![
@@ -136,10 +137,12 @@ pub fn run() {
             let handle = app.handle().clone();
             let data_dir = handle.path().app_data_dir()?;
             let paths = Paths::new(data_dir, bible_dirs(&handle));
-            let state = AppState::open(paths).map_err(|e| {
-                log::error!("could not start HollyShow: {e}");
-                e
-            })?;
+            // A failure here is shown in a native dialog (the release build has no console).
+            let state = startup::open_with_recovery(
+                &paths,
+                &startup::ask_user,
+                &startup::open_data_folder,
+            )?;
             app.manage(state.clone());
 
             recovery::install_panic_flush(state.app.clone());
@@ -159,14 +162,34 @@ pub fn run() {
             }
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while building HollyShow");
+        .build(tauri::generate_context!());
+    let app = match built {
+        Ok(app) => app,
+        Err(e) => {
+            log::error!("error while building HollyShow: {e}");
+            startup::show_fatal(&e.to_string());
+            std::process::exit(1);
+        }
+    };
 
     app.run(|handle, event| {
-        if matches!(event, tauri::RunEvent::Exit) {
-            if let Some(state) = handle.try_state::<AppState>() {
-                state.shutdown();
+        match &event {
+            tauri::RunEvent::Exit => {
+                if let Some(state) = handle.try_state::<AppState>() {
+                    state.shutdown();
+                }
             }
+            // Cmd+Q / the app-menu Quit must not end a service in progress.
+            tauri::RunEvent::ExitRequested { api, code, .. } => {
+                let locked = handle
+                    .try_state::<AppState>()
+                    .is_some_and(|s| s.is_locked());
+                if !windows::may_exit(locked, *code) {
+                    api.prevent_exit();
+                    let _ = handle.emit(windows::CLOSE_BLOCKED_EVENT, ());
+                }
+            }
+            _ => {}
         }
         updater::on_run_event(handle, &event);
     });
@@ -186,22 +209,22 @@ fn start_remote(state: AppState) {
     });
 }
 
-/// Forwards every engine update to all webviews and applies the side effects of "modo culto"
-/// (keep the machine awake). Slow consumers that lag are resynced with the current view instead
+/// Forwards every engine update to all webviews and keeps the machine awake while
+/// anything is on a projector. Slow consumers that lag are resynced with the current view instead
 /// of replaying missed events, so a window can never get stuck on stale state.
 fn bridge_updates(app: tauri::AppHandle, state: AppState) {
     let engine = state.app.engine().clone();
     let mut rx = engine.subscribe();
-    let mut mode = power::ModeEdge::default();
-    // The restored session may already be in service mode.
-    if mode.changed(engine.view().service_mode) == Some(true) {
+    let mut awake = power::ModeEdge::default();
+    // The restored session may already be in service mode or have content on screen.
+    if awake.changed(state.wants_awake()) == Some(true) {
         state.power.set_awake(true);
     }
     tauri::async_runtime::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(update) => {
-                    if let Some(on) = mode.changed(update.view.service_mode) {
+                    if let Some(on) = awake.changed(state.wants_awake()) {
                         let power = state.power.clone();
                         let _ = tauri::async_runtime::spawn_blocking(move || {
                             power.set_awake(on);

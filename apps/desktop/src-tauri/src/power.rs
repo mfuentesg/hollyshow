@@ -1,5 +1,5 @@
-//! "Modo culto" keeps the machine awake: no screensaver, display sleep or idle suspend while a
-//! service is running. Uses the platform APIs through the `keepawake` crate (IOKit on macOS,
+//! The machine stays awake while a service is running: no screensaver, display sleep or idle
+//! suspend while "modo culto" is on, an output or stage window is open, or something is live. Uses the platform APIs through the `keepawake` crate (IOKit on macOS,
 //! `SetThreadExecutionState` on Windows, the D-Bus inhibit interfaces on Linux). When the
 //! platform refuses (no D-Bus session, a minimal VM) the failure is logged and the service
 //! carries on: this is a convenience, never a precondition.
@@ -45,6 +45,13 @@ impl Power {
     }
 }
 
+/// Whether the display must be kept on: a projector window is open, content is on screen, or the
+/// operator turned on service mode. Any one is enough; opening an output without "modo culto"
+/// must not let the OS blank the projector during a long service.
+pub fn should_stay_awake(service_mode: bool, outputs_open: bool, live: bool) -> bool {
+    service_mode || outputs_open || live
+}
+
 /// Edge detector so the event bridge only touches the OS when service mode actually changes.
 #[derive(Debug, Default)]
 pub struct ModeEdge(Option<bool>);
@@ -73,6 +80,14 @@ mod tests {
         assert_eq!(e.changed(true), Some(true));
         assert_eq!(e.changed(true), None);
         assert_eq!(e.changed(false), Some(false));
+    }
+
+    #[test]
+    fn any_open_output_or_live_content_keeps_the_display_on() {
+        assert!(!should_stay_awake(false, false, false));
+        assert!(should_stay_awake(true, false, false));
+        assert!(should_stay_awake(false, true, false));
+        assert!(should_stay_awake(false, false, true));
     }
 
     #[test]

@@ -5,6 +5,7 @@ import { inTauri } from "../api/context";
 export const HOST_EVENTS = {
   monitors: "hollyshow://monitors",
   closeBlocked: "hollyshow://close-blocked",
+  outputPaused: "hollyshow://output-paused",
   biblesInstalled: "hollyshow://bibles-installed",
 } as const;
 

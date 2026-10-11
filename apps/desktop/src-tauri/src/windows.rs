@@ -24,6 +24,8 @@ use tauri::{
 pub const PREFS_KEY: &str = "windows.v1";
 pub const MONITORS_EVENT: &str = "hollyshow://monitors";
 pub const CLOSE_BLOCKED_EVENT: &str = "hollyshow://close-blocked";
+/// Emitted with the output ids that lost their monitor (payload: `string[]`).
+pub const OUTPUT_PAUSED_EVENT: &str = "hollyshow://output-paused";
 
 fn err(code: &str, message: impl ToString) -> WireError {
     WireError {
@@ -106,22 +108,38 @@ impl MonitorKey {
     }
 }
 
-/// Index of the monitor that best matches `key`: same name, size and position first; then same
-/// name and size (the screen was moved in the display arrangement); then, for unnamed monitors,
-/// the same geometry.
-pub fn find_monitor(key: &MonitorKey, monitors: &[MonitorInfo]) -> Option<usize> {
+/// Index of the monitor that best matches `key`, most specific first:
+///
+/// 1. same name, size and position;
+/// 2. same name and size (the screen was moved in the display arrangement);
+/// 3. same size and position, whatever the name (Windows renames `\\.\DISPLAY2` to
+///    `\\.\DISPLAY3` when a projector is hot-plugged or the cable changes port);
+/// 4. exactly one monitor of the same size that is not the operator's;
+/// 5. exactly one monitor that is not the operator's, whatever it is.
+///
+/// `operator` is the monitor the operator window is on; it is never a fallback candidate. Steps 4
+/// and 5 only apply when the choice is unambiguous, so an output never lands on a guess.
+pub fn find_monitor(
+    key: &MonitorKey,
+    monitors: &[MonitorInfo],
+    operator: Option<usize>,
+) -> Option<usize> {
     let size_ok = |m: &MonitorInfo| m.width == key.width && m.height == key.height;
     let pos_ok = |m: &MonitorInfo| m.x == key.x && m.y == key.y;
     let same_name = |m: &MonitorInfo| key.name.is_some() && m.name == key.name;
+    let only = |mut it: Box<dyn Iterator<Item = usize> + '_>| {
+        let first = it.next()?;
+        it.next().is_none().then_some(first)
+    };
+    // Without knowing which screen is the operator's, a guess could land on it.
+    let others = || (0..monitors.len()).filter(move |i| operator.is_some_and(|op| op != *i));
     monitors
         .iter()
         .position(|m| same_name(m) && size_ok(m) && pos_ok(m))
         .or_else(|| monitors.iter().position(|m| same_name(m) && size_ok(m)))
-        .or_else(|| {
-            monitors
-                .iter()
-                .position(|m| key.name.is_none() && m.name.is_none() && size_ok(m) && pos_ok(m))
-        })
+        .or_else(|| monitors.iter().position(|m| size_ok(m) && pos_ok(m)))
+        .or_else(|| only(Box::new(others().filter(|i| size_ok(&monitors[*i])))))
+        .or_else(|| only(Box::new(others())))
 }
 
 /// Which monitor a window should open on: the explicit request, else the remembered one, else
@@ -136,7 +154,7 @@ pub fn choose_monitor(
     if let Some(i) = requested.filter(|i| *i < monitors.len()) {
         return Some(i);
     }
-    if let Some(i) = saved.and_then(|k| find_monitor(k, monitors)) {
+    if let Some(i) = saved.and_then(|k| find_monitor(k, monitors, operator)) {
         return Some(i);
     }
     (0..monitors.len()).find(|i| Some(*i) != operator)
@@ -175,6 +193,7 @@ pub fn plan_hotplug(
     exists: impl Fn(&str) -> bool,
     parked: &HashSet<String>,
     monitors: &[MonitorInfo],
+    operator: Option<usize>,
 ) -> Vec<HotplugAction> {
     let mut out = Vec::new();
     for (label, pref) in &prefs.windows {
@@ -184,7 +203,7 @@ pub fn plan_hotplug(
         let found = pref
             .monitor
             .as_ref()
-            .and_then(|k| find_monitor(k, monitors));
+            .and_then(|k| find_monitor(k, monitors, operator));
         match (found, exists(label)) {
             (Some(monitor), true) => {
                 // Only touch windows that are parked (monitor came back) so a window the
@@ -217,6 +236,19 @@ pub fn plan_hotplug(
 /// the close button must not kill the projector).
 pub fn may_close_operator(service_mode: bool) -> bool {
     !service_mode
+}
+
+/// Output and stage windows cannot be closed by Alt+F4 / Cmd+W while service mode is on (the
+/// operator closes them from the app, which is deliberate).
+pub fn may_close_output(service_mode: bool) -> bool {
+    !service_mode
+}
+
+/// Whether the app may quit. `code` is `None` when the user asked (Cmd+Q, the app-menu Quit, the
+/// last window closing) and `Some` when the app itself exits or restarts (an update, the
+/// operator window closing outside service mode); only the former is blocked in service mode.
+pub fn may_exit(service_mode: bool, code: Option<i32>) -> bool {
+    !service_mode || code.is_some()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -272,6 +304,12 @@ impl WindowRegistry {
         } else {
             g.remove(label);
         }
+    }
+
+    /// Whether any output or stage window is meant to be open (including one parked because its
+    /// monitor is away: it comes back and must find the display awake).
+    pub fn any_open(&self) -> bool {
+        lock(&self.prefs).windows.values().any(|p| p.open)
     }
 
     pub fn parked(&self) -> HashSet<String> {
@@ -410,7 +448,9 @@ pub fn reconcile(app: &AppHandle) -> Result<(), WireError> {
         |l| app.get_webview_window(l).is_some(),
         &parked,
         &infos,
+        operator_monitor(app, &infos),
     );
+    let mut paused = Vec::new();
     for action in plan {
         match action {
             HotplugAction::Park { label } => {
@@ -422,6 +462,9 @@ pub fn reconcile(app: &AppHandle) -> Result<(), WireError> {
                 }
                 state.windows.set_parked(&label, true);
                 log::warn!("monitor of window {label} disappeared: output blacked out");
+                if let Some(id) = output_of_label(&label) {
+                    paused.push(id.to_owned());
+                }
             }
             HotplugAction::Place { label, monitor } => {
                 if let Some((_, m)) = mons.get(monitor) {
@@ -435,6 +478,9 @@ pub fn reconcile(app: &AppHandle) -> Result<(), WireError> {
                 }
             }
         }
+    }
+    if !paused.is_empty() {
+        let _ = app.emit(OUTPUT_PAUSED_EVENT, &paused);
     }
     let _ = app.emit(MONITORS_EVENT, &infos);
     Ok(())
@@ -512,6 +558,7 @@ fn open_command(
             monitor: chosen.and_then(|i| infos.get(i)).map(MonitorKey::of),
         },
     );
+    state.sync_power();
     Ok(())
 }
 
@@ -548,10 +595,12 @@ pub fn close_window(
     state
         .windows
         .forget_open(state.app.repos().settings.as_ref(), &label);
-    match app.get_webview_window(&label) {
+    let res = match app.get_webview_window(&label) {
         Some(w) => w.destroy().map_err(|e| err("window", e)),
         None => Ok(()),
-    }
+    };
+    state.sync_power();
+    res
 }
 
 #[tauri::command(async)]
@@ -567,6 +616,7 @@ pub fn output_monitors(
 ) -> Result<BTreeMap<String, Option<usize>>, WireError> {
     let infos: Vec<MonitorInfo> = monitors_of(&app)?.into_iter().map(|(i, _)| i).collect();
     let parked = state.windows.parked();
+    let operator = operator_monitor(&app, &infos);
     let mut out = BTreeMap::new();
     for (label, pref) in state.windows.prefs().windows {
         let open = app.get_webview_window(&label).is_some() || parked.contains(&label);
@@ -579,7 +629,7 @@ pub fn output_monitors(
         let idx = pref
             .monitor
             .as_ref()
-            .and_then(|k| find_monitor(k, &infos))
+            .and_then(|k| find_monitor(k, &infos, operator))
             .filter(|_| !parked.contains(&label));
         out.insert(id.to_owned(), idx);
     }
@@ -604,9 +654,16 @@ pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
             let _ = app.emit(CLOSE_BLOCKED_EVENT, ());
         }
     } else if output_of_label(window.label()).is_some() {
-        state
-            .windows
-            .forget_open(state.app.repos().settings.as_ref(), window.label());
+        if may_close_output(state.is_locked()) {
+            state
+                .windows
+                .forget_open(state.app.repos().settings.as_ref(), window.label());
+            state.sync_power();
+        } else {
+            // A stray Alt+F4 / Cmd+W must not drop the projector in the middle of a service.
+            api.prevent_close();
+            let _ = app.emit(CLOSE_BLOCKED_EVENT, ());
+        }
     }
 }
 
@@ -670,13 +727,82 @@ mod tests {
         let laptop = mon(0, "eDP-1", 0, 1920, 1080);
         let proj = mon(1, "HDMI-1", 1920, 1920, 1080);
         let key = MonitorKey::of(&proj);
-        assert_eq!(find_monitor(&key, &[laptop.clone(), proj.clone()]), Some(1));
+        assert_eq!(
+            find_monitor(&key, &[laptop.clone(), proj.clone()], Some(0)),
+            Some(1)
+        );
         // Plugged back first in the list and shifted in the arrangement.
         let moved = mon(0, "HDMI-1", -1920, 1920, 1080);
-        assert_eq!(find_monitor(&key, &[moved, laptop.clone()]), Some(0));
+        assert_eq!(
+            find_monitor(&key, &[moved, laptop.clone()], Some(1)),
+            Some(0)
+        );
         // Same name but another resolution is a different screen.
         let other = mon(0, "HDMI-1", 1920, 1280, 720);
-        assert_eq!(find_monitor(&key, &[laptop, other]), None);
+        assert_eq!(find_monitor(&key, &[laptop, other], None), None);
+    }
+
+    #[test]
+    fn a_renamed_windows_display_is_still_found() {
+        let laptop = mon(0, r"\\.\DISPLAY1", 0, 1920, 1080);
+        let proj = mon(1, r"\\.\DISPLAY2", 1920, 1920, 1080);
+        let key = MonitorKey::of(&proj);
+        // Same geometry, new GDI name.
+        let renamed = mon(1, r"\\.\DISPLAY3", 1920, 1920, 1080);
+        assert_eq!(
+            find_monitor(&key, &[laptop.clone(), renamed], Some(0)),
+            Some(1)
+        );
+        // Renamed and re-arranged: the only other screen of that resolution.
+        let moved = mon(1, r"\\.\DISPLAY3", -1920, 1920, 1080);
+        assert_eq!(
+            find_monitor(&key, &[laptop.clone(), moved], Some(0)),
+            Some(1)
+        );
+        // Renamed and a different resolution: still the only non-operator screen.
+        let tv = mon(1, r"\\.\DISPLAY3", 1920, 3840, 2160);
+        assert_eq!(
+            find_monitor(&key, &[laptop.clone(), tv.clone()], Some(0)),
+            Some(1)
+        );
+        // Never the operator's own screen, and never a guess between several candidates.
+        assert_eq!(
+            find_monitor(&key, std::slice::from_ref(&laptop), Some(0)),
+            None
+        );
+        let tv2 = mon(2, "HDMI-2", 5760, 3840, 2160);
+        assert_eq!(
+            find_monitor(&key, &[laptop.clone(), tv, tv2], Some(0)),
+            None
+        );
+        // Without knowing the operator screen there is no fallback at all.
+        let other = mon(1, r"\\.\DISPLAY3", 1920, 1280, 720);
+        assert_eq!(find_monitor(&key, &[laptop, other], None), None);
+    }
+
+    #[test]
+    fn a_renamed_monitor_comes_back_through_the_hotplug_plan() {
+        let laptop = mon(0, r"\\.\DISPLAY1", 0, 1920, 1080);
+        let proj = mon(1, r"\\.\DISPLAY2", 1920, 1920, 1080);
+        let prefs = prefs_with("output-main", &proj);
+        let parked: HashSet<String> = ["output-main".to_string()].into();
+        let back = mon(1, r"\\.\DISPLAY3", 1920, 1920, 1080);
+        assert_eq!(
+            plan_hotplug(&prefs, |_| true, &parked, &[laptop, back], Some(0)),
+            vec![HotplugAction::Place {
+                label: "output-main".into(),
+                monitor: 1
+            }]
+        );
+    }
+
+    #[test]
+    fn service_mode_blocks_user_exits_but_not_the_apps_own() {
+        assert!(!may_exit(true, None));
+        assert!(may_exit(true, Some(0)), "updates and explicit exits pass");
+        assert!(may_exit(false, None));
+        assert!(!may_close_output(true));
+        assert!(may_close_output(false));
     }
 
     #[test]
@@ -684,10 +810,10 @@ mod tests {
         let mut a = mon(0, "x", 100, 800, 600);
         a.name = None;
         let key = MonitorKey::of(&a);
-        assert_eq!(find_monitor(&key, &[a.clone()]), Some(0));
+        assert_eq!(find_monitor(&key, &[a.clone()], None), Some(0));
         let mut b = a.clone();
         b.x = 200;
-        assert_eq!(find_monitor(&key, &[b]), None);
+        assert_eq!(find_monitor(&key, &[b], None), None);
     }
 
     #[test]
@@ -729,11 +855,11 @@ mod tests {
 
         // Everything connected: nothing to do.
         let both = [laptop.clone(), proj.clone()];
-        assert!(plan_hotplug(&prefs, |_| true, &parked, &both).is_empty());
+        assert!(plan_hotplug(&prefs, |_| true, &parked, &both, Some(0)).is_empty());
 
         // Projector unplugged: park (once).
         let only_laptop = [laptop.clone()];
-        let plan = plan_hotplug(&prefs, |_| true, &parked, &only_laptop);
+        let plan = plan_hotplug(&prefs, |_| true, &parked, &only_laptop, Some(0));
         assert_eq!(
             plan,
             vec![HotplugAction::Park {
@@ -741,10 +867,10 @@ mod tests {
             }]
         );
         parked.insert("output-main".to_string());
-        assert!(plan_hotplug(&prefs, |_| true, &parked, &only_laptop).is_empty());
+        assert!(plan_hotplug(&prefs, |_| true, &parked, &only_laptop, Some(0)).is_empty());
 
         // Plugged back: move the parked window onto it.
-        let plan = plan_hotplug(&prefs, |_| true, &parked, &both);
+        let plan = plan_hotplug(&prefs, |_| true, &parked, &both, Some(0));
         assert_eq!(
             plan,
             vec![HotplugAction::Place {
@@ -764,11 +890,12 @@ mod tests {
             &prefs,
             none_open,
             &HashSet::new(),
-            std::slice::from_ref(&laptop)
+            std::slice::from_ref(&laptop),
+            Some(0)
         )
         .is_empty());
         assert_eq!(
-            plan_hotplug(&prefs, none_open, &HashSet::new(), &[laptop, proj]),
+            plan_hotplug(&prefs, none_open, &HashSet::new(), &[laptop, proj], Some(0)),
             vec![HotplugAction::Place {
                 label: "stage".into(),
                 monitor: 1
@@ -781,7 +908,7 @@ mod tests {
         let laptop = mon(0, "eDP-1", 0, 1920, 1080);
         let mut prefs = prefs_with("output-main", &laptop);
         prefs.windows.get_mut("output-main").unwrap().open = false;
-        assert!(plan_hotplug(&prefs, |_| false, &HashSet::new(), &[]).is_empty());
+        assert!(plan_hotplug(&prefs, |_| false, &HashSet::new(), &[], None).is_empty());
         // A windowed preview has no remembered monitor: never parked.
         let mut windowed = Prefs::default();
         windowed.windows.insert(
@@ -791,7 +918,7 @@ mod tests {
                 monitor: None,
             },
         );
-        assert!(plan_hotplug(&windowed, |_| true, &HashSet::new(), &[laptop]).is_empty());
+        assert!(plan_hotplug(&windowed, |_| true, &HashSet::new(), &[laptop], Some(0)).is_empty());
     }
 
     #[test]

@@ -63,6 +63,7 @@ function useHostNotices() {
   useHostEvents({
     closeBlocked: () => toasts.push(t("startup.closeBlocked"), "info"),
     monitors: () => toasts.push(t("startup.monitorsChanged"), "info"),
+    outputPaused: () => toasts.push(t("startup.outputPaused"), "error"),
   });
 }
 

@@ -105,35 +105,62 @@ fn nonexistent_sibling(path: &Path, suffix: &str) -> PathBuf {
 
 /// Opens the store; a corrupt file is set aside and replaced by the newest usable backup (or an
 /// empty library). A database from a *newer* HollyShow is never touched: the error is returned.
-pub fn open_store(paths: &Paths, now_ms: i64) -> Result<(Arc<Store>, DbRecovery), String> {
+pub fn open_store(paths: &Paths, now_ms: i64) -> Result<(Arc<Store>, DbRecovery), OpenError> {
     let attempt = Store::open(&paths.db).and_then(|s| s.integrity_check().map(|()| s));
     match attempt {
         Ok(store) => Ok((Arc::new(store), DbRecovery::Clean)),
-        Err(StorageError::Invalid(m)) => Err(format!("la base de datos no se puede usar: {m}")),
+        Err(StorageError::Invalid(m)) => Err(OpenError::Database(format!(
+            "la base de datos no se puede usar: {m}"
+        ))),
         Err(e) => {
             log::error!("library database unreadable ({e}); recovering");
-            let broken = nonexistent_sibling(&paths.db, &format!(".corrupt-{now_ms}"));
-            std::fs::rename(&paths.db, &broken)
-                .map_err(|io| format!("no se pudo apartar la base: {io}"))?;
-            for ext in ["-wal", "-shm"] {
-                let side = nonexistent_sibling(&paths.db, ext);
-                if side.exists() {
-                    let _ = std::fs::rename(&side, nonexistent_sibling(&broken, ext));
-                }
+            recover_unusable(paths, now_ms).map_err(OpenError::Other)
+        }
+    }
+}
+
+/// Sets the current database file aside (it is kept next to the new one) and starts from the
+/// newest usable backup, or from an empty library when there is none.
+pub fn recover_unusable(paths: &Paths, now_ms: i64) -> Result<(Arc<Store>, DbRecovery), String> {
+    if paths.db.exists() {
+        let broken = nonexistent_sibling(&paths.db, &format!(".corrupt-{now_ms}"));
+        std::fs::rename(&paths.db, &broken)
+            .map_err(|io| format!("no se pudo apartar la base: {io}"))?;
+        for ext in ["-wal", "-shm"] {
+            let side = nonexistent_sibling(&paths.db, ext);
+            if side.exists() {
+                let _ = std::fs::rename(&side, nonexistent_sibling(&broken, ext));
             }
-            let backups = hollyshow_storage_sqlite::list_backup_files(&paths.backups);
-            for b in backups {
-                if restore_backup(&b.path, &paths.db).is_ok() {
-                    if let Ok(store) = Store::open(&paths.db) {
-                        log::warn!("library restored from backup {}", b.date);
-                        return Ok((Arc::new(store), DbRecovery::RestoredBackup(b.date)));
-                    }
-                }
-                let _ = std::fs::remove_file(&paths.db);
+        }
+    }
+    let backups = hollyshow_storage_sqlite::list_backup_files(&paths.backups);
+    for b in backups {
+        if restore_backup(&b.path, &paths.db).is_ok() {
+            if let Ok(store) = Store::open(&paths.db) {
+                log::warn!("library restored from backup {}", b.date);
+                return Ok((Arc::new(store), DbRecovery::RestoredBackup(b.date)));
             }
-            let store =
-                Store::open(&paths.db).map_err(|e| format!("no se pudo crear la base: {e}"))?;
-            Ok((Arc::new(store), DbRecovery::StartedEmpty))
+        }
+        let _ = std::fs::remove_file(&paths.db);
+    }
+    let store = Store::open(&paths.db).map_err(|e| format!("no se pudo crear la base: {e}"))?;
+    Ok((Arc::new(store), DbRecovery::StartedEmpty))
+}
+
+/// Why the app could not start.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenError {
+    /// The library database cannot be used (for instance it comes from a newer HollyShow). The
+    /// user may choose to start from a backup or an empty library.
+    Database(String),
+    /// Anything else (unwritable data folder, image bank...).
+    Other(String),
+}
+
+impl std::fmt::Display for OpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Database(m) | Self::Other(m) => f.write_str(m),
         }
     }
 }
@@ -211,9 +238,13 @@ pub struct AppState {
 impl AppState {
     /// Opens the library, restores the previous session and builds the services. Fast: the
     /// bundled Bibles are installed afterwards on a background thread (see `bibles`).
-    pub fn open(paths: Paths) -> Result<Self, String> {
-        std::fs::create_dir_all(&paths.data_dir)
-            .map_err(|e| format!("no se pudo crear {}: {e}", paths.data_dir.display()))?;
+    pub fn open(paths: Paths) -> Result<Self, OpenError> {
+        std::fs::create_dir_all(&paths.data_dir).map_err(|e| {
+            OpenError::Other(format!(
+                "no se pudo crear {}: {e}",
+                paths.data_dir.display()
+            ))
+        })?;
         let now_ms = now_ms();
         let (store, recovery) = open_store(&paths, now_ms)?;
         if let Err(e) = store.daily_backup(&paths.backups, BACKUPS_KEPT, local_now_ms()) {
@@ -254,10 +285,9 @@ impl AppState {
             .ok()
             .flatten()
             .filter(|t| !t.trim().is_empty());
-        let media = Arc::new(
-            DefaultMediaService::open(&paths.media, token)
-                .map_err(|e| format!("no se pudo abrir el banco de imagenes: {e}"))?,
-        );
+        let media = Arc::new(DefaultMediaService::open(&paths.media, token).map_err(|e| {
+            OpenError::Other(format!("no se pudo abrir el banco de imagenes: {e}"))
+        })?);
 
         #[cfg(debug_assertions)]
         load_demo_show(&app);
@@ -279,6 +309,25 @@ impl AppState {
     /// Whether library edits are blocked ("modo culto").
     pub fn is_locked(&self) -> bool {
         self.app.is_locked()
+    }
+
+    /// Whether the machine must be kept awake right now (see [`crate::power::should_stay_awake`]).
+    pub fn wants_awake(&self) -> bool {
+        let view = self.app.engine().view();
+        crate::power::should_stay_awake(
+            view.service_mode,
+            self.windows.any_open(),
+            view.live.is_some(),
+        )
+    }
+
+    /// Applies [`Self::wants_awake`] to the OS on a short-lived thread (the platform call may
+    /// block). Idempotent; call it whenever a window opens or closes.
+    pub fn sync_power(&self) {
+        let state = self.clone();
+        std::thread::spawn(move || {
+            state.power.set_awake(state.wants_awake());
+        });
     }
 
     /// Marks a clean exit and writes the session one last time.
