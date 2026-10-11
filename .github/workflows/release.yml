@@ -33,7 +33,10 @@ jobs:
 
   build:
     needs: [version, verify]
+    # Legs all upload into the same draft release (and merge latest.json): run them one at a
+    # time so concurrent read-modify-write cycles cannot drop a platform.
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -103,15 +106,17 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v__VERSION__' }}
           releaseName: "HollyShow v__VERSION__"
           releaseBody: "Consulta docs/USER_GUIDE.md para instalar. Los instaladores pueden estar sin firmar (ver docs/RELEASE.md)."
-          # Published (not draft) so releases/latest/download/latest.json resolves for the updater.
-          releaseDraft: false
-          # Tags such as v1.2.0-beta.1 are prereleases and are skipped by /releases/latest.
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          # Draft until every leg succeeded: the `publish` job validates latest.json and then
+          # publishes, so a failed leg never leaves a live release the updater would pick up.
+          releaseDraft: true
+          # Prerelease flag from real tags only (a branch name with a hyphen must not count).
+          prerelease: ${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-') }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           # The overlay turns on signed updater artifacts (needs TAURI_SIGNING_PRIVATE_KEY); local
-          # `pnpm tauri build` works without the key.
-          args: ${{ matrix.args }} --config tauri.release.conf.json
+          # `pnpm tauri build` works without the key. The path is relative to projectPath
+          # (apps/desktop), where `pnpm tauri` runs.
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
       # Also on failure, so a broken leg still leaves whatever it bundled for inspection.
       - name: Upload bundles as workflow artifacts
@@ -128,3 +133,39 @@ jobs:
             target/**/release/bundle/**/*.deb
             target/**/release/bundle/**/*.AppImage
             target/**/release/bundle/**/*.sig
+
+  # Runs only when every leg succeeded: checks the merged latest.json, then publishes the draft.
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate latest.json and publish the release
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v$(node -p "require('./package.json').version")"
+          fi
+          mkdir -p "$RUNNER_TEMP/rel"
+          gh release download "$TAG" --pattern latest.json --dir "$RUNNER_TEMP/rel" --clobber
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const keys = Object.keys(j.platforms || {});
+            console.log("platforms:", keys.join(", "));
+            for (const os of ["darwin", "windows", "linux"]) {
+              const k = keys.filter((x) => x.startsWith(os + "-"));
+              if (!k.length || k.some((x) => !j.platforms[x].url || !j.platforms[x].signature)) {
+                console.error("latest.json is missing a complete " + os + " entry");
+                process.exit(1);
+              }
+            }
+          ' "$RUNNER_TEMP/rel/latest.json"
+          gh release edit "$TAG" --draft=false

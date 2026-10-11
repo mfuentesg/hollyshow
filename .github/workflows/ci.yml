@@ -48,6 +48,13 @@ jobs:
 
       # The Tauri and server crates embed the built frontends at compile time (they fall back to a
       # placeholder on a fresh clone, but CI tests the real thing).
+      # Catches a wrong release overlay path (relative to apps/desktop) on every PR, not at release.
+      - name: Release config overlay resolves
+        run: |
+          test -f apps/desktop/src-tauri/tauri.release.conf.json
+          node -e 'JSON.parse(require("fs").readFileSync("apps/desktop/src-tauri/tauri.release.conf.json","utf8"))'
+          cd apps/desktop && pnpm tauri build --config src-tauri/tauri.release.conf.json --help >/dev/null
+
       - name: Build frontends
         run: pnpm build:web
 
