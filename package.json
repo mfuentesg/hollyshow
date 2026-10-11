@@ -1,0 +1,31 @@
+{
+  "name": "hollyshow",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter desktop tauri dev",
+    "dev:web": "pnpm --filter desktop dev",
+    "dev:remote": "pnpm --filter remote dev",
+    "build": "pnpm --filter remote build && pnpm --filter desktop tauri build",
+    "build:web": "pnpm -r --filter './apps/*' build",
+    "lint": "eslint . && prettier --check . ",
+    "format": "prettier --write .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "gen:types": "node scripts/gen-types.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "eslint": "^9.39.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.6.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.0"
+  },
+  "type": "module"
+}

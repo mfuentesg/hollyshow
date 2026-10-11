@@ -1,0 +1,14 @@
+[package]
+name = "hollyshow-bible"
+description = "Bible reference parsing (es/en/pt), importers (OSIS, USFM, Zefania) and verse splitting"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hollyshow-core.workspace = true
+thiserror.workspace = true

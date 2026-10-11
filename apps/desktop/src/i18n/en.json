@@ -1,0 +1,17 @@
+{
+  "app": { "name": "HollyShow" },
+  "operator": {
+    "live": "Live",
+    "preview": "Preview",
+    "next": "Next",
+    "prev": "Previous",
+    "blackout": "Blackout",
+    "clear": "Clear",
+    "logo": "Logo",
+    "serviceMode": "Service mode",
+    "empty": "Nothing on screen",
+    "mock": "Demo mode (no Tauri)"
+  },
+  "stage": { "now": "Now", "next": "Next", "message": "Message" },
+  "palette": { "placeholder": "Search song, verse or action..." }
+}

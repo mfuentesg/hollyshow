@@ -1,0 +1,18 @@
+[package]
+name = "hollyshow-core"
+description = "HollyShow domain model, command/event contracts and the pure presentation reducer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ts-rs.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+unicode-normalization.workspace = true

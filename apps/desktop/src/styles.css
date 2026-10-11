@@ -1,0 +1,77 @@
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--hs-surface);
+  border-bottom: 1px solid var(--hs-border);
+}
+.topbar h1 {
+  font: 800 20px var(--hs-font-projection);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+.spacer {
+  flex: 1;
+}
+.panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 20px;
+  min-height: 0;
+}
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.pane .screen {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border-radius: var(--hs-radius-md);
+  overflow: hidden;
+  border: 2px solid var(--hs-border);
+  background: #000;
+}
+.pane.live .screen {
+  border-color: var(--hs-live-border);
+}
+.pane.preview .screen {
+  border-color: var(--hs-preview-border);
+}
+.controls {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--hs-surface);
+  border-top: 1px solid var(--hs-border);
+}
+.output-root {
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  cursor: none;
+  overflow: hidden;
+}
+.stage-root {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 24px;
+  height: 100%;
+  padding: 24px;
+  font-family: var(--hs-font-ui);
+}
+.mono {
+  font-family: var(--hs-font-mono);
+}
+.muted {
+  color: var(--hs-text-secondary);
+}

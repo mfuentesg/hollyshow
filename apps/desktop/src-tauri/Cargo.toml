@@ -1,0 +1,33 @@
+[package]
+name = "hollyshow-desktop"
+description = "HollyShow desktop shell (Tauri 2): windows, IPC commands and engine wiring"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+default-run = "hollyshow-desktop"
+
+[lib]
+name = "hollyshow_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+hollyshow-core.workspace = true
+hollyshow-storage.workspace = true
+hollyshow-songs.workspace = true
+hollyshow-bible.workspace = true
+hollyshow-server.workspace = true
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-log = "2"
+log = "0.4"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

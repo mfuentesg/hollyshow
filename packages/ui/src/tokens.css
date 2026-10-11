@@ -1,0 +1,58 @@
+/* Design tokens: «Cabina nocturna». Source of truth: docs/design/README.md and Main.dc.html. */
+@import "@fontsource/instrument-sans/400.css";
+@import "@fontsource/instrument-sans/500.css";
+@import "@fontsource/instrument-sans/600.css";
+@import "@fontsource/instrument-sans/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/600.css";
+@import "@fontsource/archivo/600.css";
+@import "@fontsource/archivo/800.css";
+
+:root {
+  --hs-bg: #0f1115;
+  --hs-surface: #171a21;
+  --hs-elevated: #1f232c;
+  --hs-border: #2a2f3a;
+  --hs-text: #e8eaf0;
+  --hs-text-secondary: #9aa3b2;
+
+  --hs-amber: #f2b544;
+  --hs-amber-hover: #ffd27a;
+  --hs-on-amber: #1a1405;
+
+  --hs-live: #d13438;
+  --hs-live-border: #ff6369;
+  --hs-preview: #2563d9;
+  --hs-preview-border: #5b9bff;
+  --hs-ok: #2fa36b;
+
+  --hs-font-ui: "Instrument Sans", system-ui, sans-serif;
+  --hs-font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --hs-font-projection: "Archivo", "Instrument Sans", system-ui, sans-serif;
+
+  --hs-radius-sm: 8px;
+  --hs-radius-md: 12px;
+  --hs-radius-pill: 999px;
+
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--hs-bg);
+  color: var(--hs-text);
+  font-family: var(--hs-font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}

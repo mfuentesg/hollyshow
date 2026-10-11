@@ -1,0 +1,14 @@
+[package]
+name = "hollyshow-songs"
+description = "Song slide splitting and importers (OpenLyrics, ChordPro, OpenSong, plain text)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hollyshow-core.workspace = true
+thiserror.workspace = true

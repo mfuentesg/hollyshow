@@ -1,0 +1,18 @@
+[package]
+name = "hollyshow-storage"
+description = "Repository traits (the persistence boundary) and an in-memory implementation; SQLite lands here"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hollyshow-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Used by the SQLite implementation (builder B). Declared now so the dependency graph is settled.
+rusqlite.workspace = true
