@@ -13,3 +13,9 @@ workspace = true
 hollyshow-core.workspace = true
 hollyshow-storage-api.workspace = true
 rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+hollyshow-storage-api = { workspace = true, features = ["testing"] }
+tempfile = "3"

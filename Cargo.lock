@@ -1789,6 +1789,9 @@ dependencies = [
  "hollyshow-core",
  "hollyshow-storage-api",
  "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
