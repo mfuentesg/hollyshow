@@ -70,23 +70,22 @@ export function decideKey(e: KeyInput, buffer: KeyBuffer, now: number): Shortcut
   if (mod && lower === "y") return { action: { type: "redo" }, buffer, consume: true };
   if (mod || e.alt) return none();
 
-  // Plain buttons keep Enter / Space for themselves; slide tiles and the page do not.
-  const free = e.target === "other" || e.target === "tile";
-  if (free) {
-    switch (k) {
-      case "ArrowRight":
-      case "PageDown":
-        return { action: { type: "next" }, buffer, consume: true };
-      case "ArrowLeft":
-      case "PageUp":
-        return { action: { type: "prev" }, buffer, consume: true };
-      case " ":
-        return { action: { type: e.shift ? "prev" : "next" }, buffer, consume: true };
-      case "Enter":
-        return { action: { type: "takePreview" }, buffer, consume: true };
-    }
+  // A focused button / link keeps only Enter and Space (its own activation); everything else
+  // (arrows, B / L / X, section jumps, ?) must stay live after a click leaves focus on a button.
+  const ownsActivation = e.target === "button" && (k === "Enter" || k === " ");
+  if (ownsActivation) return none();
+  switch (k) {
+    case "ArrowRight":
+    case "PageDown":
+      return { action: { type: "next" }, buffer, consume: true };
+    case "ArrowLeft":
+    case "PageUp":
+      return { action: { type: "prev" }, buffer, consume: true };
+    case " ":
+      return { action: { type: e.shift ? "prev" : "next" }, buffer, consume: true };
+    case "Enter":
+      return { action: { type: "takePreview" }, buffer, consume: true };
   }
-  if (e.target === "button") return none();
 
   if (k === "?") return { action: { type: "help" }, buffer, consume: true };
   if (lower === "b") return { action: { type: "blackout" }, buffer, consume: true };

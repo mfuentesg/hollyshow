@@ -68,4 +68,20 @@ describe("operator shortcuts", () => {
     expect(decideKey(key("q"), empty, 1).action).toBeNull();
     expect(decideKey(key("ArrowRight", { alt: true }), empty, 1).action).toBeNull();
   });
+
+  it("panic, navigation and section keys still fire while a button holds focus", () => {
+    const btn = { target: "button" } as const;
+    expect(decideKey(key("b", btn), empty, 1).action).toEqual({ type: "blackout" });
+    expect(decideKey(key("l", btn), empty, 1).action).toEqual({ type: "logo" });
+    expect(decideKey(key("x", btn), empty, 1).action).toEqual({ type: "clear" });
+    expect(decideKey(key("?", btn), empty, 1).action).toEqual({ type: "help" });
+    expect(decideKey(key("ArrowRight", btn), empty, 1).action).toEqual({ type: "next" });
+    expect(decideKey(key(" ", btn), empty, 1).action).toBeNull();
+    const r1 = decideKey(key("v", btn), empty, 1);
+    expect(decideKey(key("1", btn), r1.buffer, 2).action).toEqual({
+      type: "jump",
+      section: "V1",
+      to: "live",
+    });
+  });
 });

@@ -54,6 +54,9 @@ export function SlideGrid() {
   const editIdx = focusIdx ?? (liveIdx >= 0 ? liveIdx : prevIdx >= 0 ? prevIdx : 0);
   const editSlide: Slide | undefined = entry.slides[editIdx];
   const content = item?.content;
+  // Next / Enter / arrows act on the live (else preview) cursor, not on the browsed item.
+  const actingId = view.live?.itemId ?? view.preview?.itemId ?? null;
+  const actingEntry = actingId ? (op.p.show.find((e) => e.itemId === actingId) ?? null) : null;
 
   return (
     <main className="center" aria-label={t("slides.title")}>
@@ -129,6 +132,18 @@ export function SlideGrid() {
           </Button>
         </div>
       </div>
+
+      {actingEntry && actingEntry.itemId !== entry.itemId && (
+        <div className="browse-banner" role="status">
+          <span>
+            {t("slides.browsing", { name: entry.title })} ·{" "}
+            <strong>{t("slides.actingOn", { name: actingEntry.title })}</strong>
+          </span>
+          <Button size="sm" onClick={() => void send(cmd.goTo(entry.itemId, 0, "preview"))}>
+            {t("slides.loadPreview")}
+          </Button>
+        </div>
+      )}
 
       {entry.slides.length === 0 ? (
         <p className="muted">{t("slides.noSlides")}</p>

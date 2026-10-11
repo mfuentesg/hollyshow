@@ -60,6 +60,13 @@
   border: 1px solid var(--hs-border);
   color: var(--hs-text-secondary);
 }
+/* Inside a column panel the field is a fixed-height row, not a flex-grow box. */
+.panel .searchbox {
+  flex: none;
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
 .searchbox:focus-within {
   border-color: var(--hs-amber);
 }
@@ -402,15 +409,37 @@
 .order-item.is-live .order-item__sub {
   color: var(--hs-live-text);
 }
+/* Actions float over the right edge so the title keeps its width (no reflow on hover/select). */
 .order-item__actions {
   display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   align-items: center;
-  gap: 2px;
-  padding-right: 4px;
+  gap: 4px;
+  padding: 0 6px 0 28px;
+  border-radius: 0 10px 10px 0;
+  background: linear-gradient(to right, transparent, var(--hs-surface) 24px);
+}
+.order-item.is-selected .order-item__actions {
+  background: linear-gradient(to right, transparent, var(--hs-elevated) 24px);
+}
+.order-item.is-live .order-item__actions {
+  background: linear-gradient(to right, transparent, var(--hs-live-tint) 24px);
+}
+/* Keep the destructive action well away from its neighbours (mistap guard). */
+.order-item__actions > :last-child {
+  margin-left: 14px;
 }
 .order-item:hover .order-item__actions,
-.order-item:focus-within .order-item__actions {
+.order-item:has(:focus-visible) .order-item__actions {
   display: flex;
+}
+@media (hover: none) {
+  .order-item.is-selected .order-item__actions {
+    display: flex;
+  }
 }
 .order-total {
   display: flex;
@@ -622,6 +651,8 @@ button.picklist__row:hover {
   justify-content: flex-start;
 }
 .song-list {
+  flex: 1 1 auto;
+  min-height: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1082,4 +1113,22 @@ button.picklist__row:hover {
 }
 .pairing {
   max-width: 560px;
+}
+
+.browse-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--hs-border-strong);
+  background: var(--hs-surface);
+  font-size: 13px;
+}
+.browse-banner strong {
+  font-weight: 600;
+}
+.tile:focus-visible {
+  outline-style: dotted;
 }
