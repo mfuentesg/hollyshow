@@ -1,14 +1,29 @@
 # HollyShow
 
-Presentación para iglesias (letras, Biblia, medios) con control remoto por red local.
-Tauri 2 + React + Rust. Plan: `docs/PLAN.md`. Arquitectura: `docs/ARCHITECTURE.md`. Diseño: `docs/design/`.
+Aplicación de escritorio para proyectar los cultos de una iglesia: canciones, Biblia, medios y anuncios,
+con control remoto desde el móvil por la red local. Hecha con Tauri 2, React y Rust (versión 0.1.0).
+
+## Qué incluye
+
+- Biblioteca de canciones con búsqueda de texto completo (SQLite FTS5), acordes y transposición.
+- Varias versiones de la Biblia de dominio público, búsqueda por referencia o por texto.
+- Orden del culto con plantillas, modo culto (bloquea cierres accidentales), temporizadores y edición en vivo.
+- Varias salidas (proyector, escenario) y temas configurables; paleta de comandos con Ctrl/Cmd+K.
+- Control remoto web para móvil con emparejamiento por código; desactivado por defecto.
+- Copias de seguridad automáticas, exportación e importación de la biblioteca, interfaz en español (inglés secundario).
+
+Fuera de alcance por ahora: subtítulos con IA, NDI, MIDI/OSC, iluminación, Planning Center, sincronización en la nube.
+
+## Capturas
+
+_Pendiente: añadir capturas de pantalla en `docs/screenshots/` (operador, salida, control remoto)._
 
 ## Requisitos
 
 Rust estable, Node 22, pnpm 10, y las dependencias de Tauri 2 de tu SO
 (Linux: `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev`).
 
-## Comandos
+## Desarrollo
 
 ```sh
 pnpm bootstrap      # primera vez en un clon: instala y construye los frontends (los crates los incrustan)
@@ -22,7 +37,22 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
 pnpm build          # instaladores del SO actual (Linux: .deb y .AppImage en target/release/bundle)
 ```
 
-Lanzamientos: etiqueta `v*` -> workflow `Release` (borrador de release con instaladores sin firmar).
+## Compilar
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter remote build        # primero: el servidor Rust incrusta apps/remote/dist
+pnpm --filter desktop tauri build # instaladores del SO actual en target/release/bundle
+```
+
+Linux produce `.deb` y `.AppImage`; macOS `.dmg`; Windows `.msi` y `.exe` (NSIS).
+
+## Lanzamiento
+
+La versión (0.1.0) debe coincidir en `Cargo.toml`, los `package.json` y la etiqueta (`pnpm check:version`).
+Al subir una etiqueta `v*` (o ejecutar el workflow a mano) `.github/workflows/release.yml` pasa la verificación y compila con
+`tauri-action` macOS universal (`.dmg`), Windows (`.msi`/NSIS) y Linux, y publica la release tras validar `latest.json`.
+Los instaladores pueden ir sin firmar; ver `docs/RELEASE.md` y `docs/SIGNING.md`. Guía de usuario: `docs/USER_GUIDE.md`.
 
 ## Datos del usuario y primera ejecución
 

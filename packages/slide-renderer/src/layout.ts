@@ -163,7 +163,10 @@ function fitInput(
  */
 export function planText(slide: Slide, theme: Theme, box: Box, measure: Measure): TextPlan {
   const mode = modeOf(slide);
-  const area = textArea(theme, box, Boolean(theme.showCopyright && (slide.footer || slide.bible.some((c) => c.copyright))),
+  const area = textArea(
+    theme,
+    box,
+    Boolean(theme.showCopyright && (slide.footer || slide.bible.some((c) => c.copyright))),
   );
   const inputs = fitInput(slide, theme, area, box, measure, mode);
   const px =

@@ -2,14 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "render-only",
   "description": "Output and stage windows only render: they read the live state and report frame stats. They cannot change the library, settings, devices or show.",
-  "windows": [
-    "output-*",
-    "stage"
-  ],
-  "permissions": [
-    "core:default",
-    "allow-get-snapshot",
-    "allow-query",
-    "allow-report-output-stats"
-  ]
+  "windows": ["output-*", "stage"],
+  "permissions": ["core:default", "allow-get-snapshot", "allow-query", "allow-report-output-stats"]
 }
