@@ -138,6 +138,11 @@ async fn join(h: &Harness, role: &str, token: Option<&str>) -> (Ws, u64) {
     (ws, v)
 }
 
+/// The version a well-behaved client would echo back (what its last snapshot said).
+fn cur(h: &Harness) -> u64 {
+    h.service.engine().with_state(|s| s.version)
+}
+
 fn next_cmd(id: &str, expected: Option<u64>) -> Value {
     json!({"type":"command","id":id,"cmd":{"kind":"next","expectedVersion":expected}})
 }
@@ -202,7 +207,7 @@ async fn congregation_joins_without_pairing_and_is_read_only_and_filtered() {
         "the audience never receives the show"
     );
 
-    send(&mut ws, next_cmd("c1", None)).await;
+    send(&mut ws, next_cmd("c1", Some(cur(&h)))).await;
     let a = ack(&mut ws, "c1").await;
     assert_eq!(a["ok"], false);
     assert_eq!(a["error"]["code"], "forbidden");
@@ -243,7 +248,7 @@ async fn pairing_by_pin_issues_a_token_that_resumes_the_session_with_the_stored_
     assert_eq!(token.len(), 64);
 
     let (mut again, _) = join(&h, "operator", Some(&token)).await;
-    send(&mut again, next_cmd("c1", None)).await;
+    send(&mut again, next_cmd("c1", Some(cur(&h)))).await;
     assert_eq!(
         ack(&mut again, "c1").await["error"]["code"],
         "forbidden",
@@ -462,41 +467,15 @@ async fn concurrent_next_with_the_same_expected_version_advances_exactly_one_sli
 }
 
 #[tokio::test]
-async fn concurrent_unconditional_next_is_serialised_without_losing_or_doubling_steps() {
+async fn remote_relative_commands_without_expected_version_are_rejected() {
     let h = start().await;
     let token = pair(&h, Role::Operator, "Operador").await;
-    let mut clients = Vec::new();
-    for _ in 0..6 {
-        clients.push(join(&h, "operator", Some(&token)).await);
-    }
-    let v0 = clients[0].1;
-    let results = join_all(
-        clients
-            .iter_mut()
-            .enumerate()
-            .map(|(i, (ws, _))| async move {
-                let id = format!("n{i}");
-                send(ws, next_cmd(&id, None)).await;
-                ack(ws, &id).await
-            }),
-    )
-    .await;
-    assert!(results.iter().all(|a| a["ok"] == true), "{results:?}");
-    let mut versions: Vec<u64> = results
-        .iter()
-        .map(|a| a["version"].as_u64().unwrap())
-        .collect();
-    versions.sort_unstable();
-    assert_eq!(
-        versions,
-        (v0 + 1..=v0 + 6).collect::<Vec<_>>(),
-        "every step got its own version"
-    );
-    let idx = h
-        .service
-        .engine()
-        .with_state(|s| s.live.as_ref().map(|c| c.slide_index));
-    assert_eq!(idx, Some(5));
+    let (mut ws, v0) = join(&h, "operator", Some(&token)).await;
+    send(&mut ws, next_cmd("n0", None)).await;
+    let a = ack(&mut ws, "n0").await;
+    assert_eq!(a["ok"], false, "{a}");
+    assert_eq!(a["error"]["code"], "invalid");
+    assert_eq!(h.service.engine().with_state(|s| s.version), v0);
     h.running.shutdown().await;
 }
 
@@ -505,9 +484,9 @@ async fn duplicate_command_ids_are_not_applied_twice() {
     let h = start().await;
     let token = pair(&h, Role::Operator, "Operador").await;
     let (mut ws, _) = join(&h, "operator", Some(&token)).await;
-    send(&mut ws, next_cmd("same", None)).await;
+    send(&mut ws, next_cmd("same", Some(cur(&h)))).await;
     let first = ack(&mut ws, "same").await;
-    send(&mut ws, next_cmd("same", None)).await;
+    send(&mut ws, next_cmd("same", Some(cur(&h)))).await;
     let second = ack(&mut ws, "same").await;
     assert_eq!(first["duplicate"], false);
     assert_eq!(second["duplicate"], true);
@@ -526,7 +505,7 @@ async fn every_client_sees_the_change_with_consecutive_versions_and_role_filteri
 
     for i in 0..3u64 {
         let id = format!("n{i}");
-        send(&mut operator, next_cmd(&id, None)).await;
+        send(&mut operator, next_cmd(&id, Some(cur(&h)))).await;
         assert_eq!(ack(&mut operator, &id).await["ok"], true);
     }
     for ws in [&mut stage_ws, &mut crowd] {
@@ -679,14 +658,14 @@ async fn malformed_and_oversized_frames_do_not_hurt_the_show() {
     ))
     .await
     .unwrap();
-    send(&mut ws, next_cmd("ok", None)).await;
+    send(&mut ws, next_cmd("ok", Some(cur(&h)))).await;
     assert_eq!(ack(&mut ws, "ok").await["ok"], true);
 
     // A frame over the limit closes that socket only.
     let mut big = connect(&h).await;
     let _ = big.send(Message::text("x".repeat(200 * 1024))).await;
     while recv(&mut big).await.is_some() {}
-    send(&mut ws, next_cmd("ok2", None)).await;
+    send(&mut ws, next_cmd("ok2", Some(cur(&h)))).await;
     assert_eq!(ack(&mut ws, "ok2").await["ok"], true);
     h.running.shutdown().await;
 }
@@ -823,15 +802,15 @@ async fn shutdown_closes_open_sockets_promptly() {
 async fn a_command_resent_after_reconnecting_is_recognised_as_a_duplicate() {
     let h = start().await;
     let token = pair(&h, Role::Operator, "Operador").await;
-    let (mut ws, _) = join(&h, "operator", Some(&token)).await;
-    send(&mut ws, next_cmd("c-abc-1", None)).await;
+    let (mut ws, v) = join(&h, "operator", Some(&token)).await;
+    send(&mut ws, next_cmd("c-abc-1", Some(v))).await;
     let first = ack(&mut ws, "c-abc-1").await;
     assert_eq!(first["duplicate"], false);
     let advanced = h.service.engine().with_state(|s| s.version);
     // The ack was "lost": the socket drops and the client resends the same id on a new socket.
     drop(ws);
     let (mut ws2, _) = join(&h, "operator", Some(&token)).await;
-    send(&mut ws2, next_cmd("c-abc-1", None)).await;
+    send(&mut ws2, next_cmd("c-abc-1", Some(v))).await;
     let again = ack(&mut ws2, "c-abc-1").await;
     assert_eq!(again["duplicate"], true, "{again}");
     assert_eq!(again["version"], first["version"]);
@@ -846,15 +825,16 @@ async fn devices_do_not_share_dedupe_windows_and_the_window_ends_after_the_grace
     let tb = pair(&h, Role::Operator, "B").await;
     let (mut a, _) = join(&h, "operator", Some(&ta)).await;
     let (mut b, _) = join(&h, "operator", Some(&tb)).await;
-    send(&mut a, next_cmd("c-1", None)).await;
+    let now_v = |h: &Harness| h.service.engine().with_state(|s| s.version);
+    send(&mut a, next_cmd("c-1", Some(now_v(&h)))).await;
     assert_eq!(ack(&mut a, "c-1").await["duplicate"], false);
     // Same id from another device is a different command.
-    send(&mut b, next_cmd("c-1", None)).await;
+    send(&mut b, next_cmd("c-1", Some(now_v(&h)))).await;
     assert_eq!(ack(&mut b, "c-1").await["duplicate"], false);
     drop(a);
     tokio::time::sleep(Duration::from_millis(600)).await;
     let (mut a2, _) = join(&h, "operator", Some(&ta)).await;
-    send(&mut a2, next_cmd("c-1", None)).await;
+    send(&mut a2, next_cmd("c-1", Some(now_v(&h)))).await;
     assert_eq!(
         ack(&mut a2, "c-1").await["duplicate"],
         false,
