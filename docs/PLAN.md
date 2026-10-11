@@ -166,6 +166,24 @@ Leyenda — **Impacto**: ★ a ★★★ · **Esfuerzo**: S (días) / M (1–3 s
 | Panel de salud | FPS de la salida, frames perdidos, CPU/memoria, remotos conectados, estado de la red. | ★★ | S–M |
 | Reporte de errores opt-in | Envío de crashes (ej. Sentry) sólo con consentimiento. | ★★ | S |
 
+#### E2. Banco de imágenes abierto (fondos cristianos)
+
+Buscar y descargar fondos (cruces, cielos, naturaleza, iglesias, manos en adoración, luz, etc.) **dentro de la app**, sin salir a un navegador.
+
+| Fuente | Por qué | Acceso |
+|---|---|---|
+| **Openverse** (proyecto open source de WordPress) — principal | Agrega cientos de millones de imágenes con licencias Creative Commons / dominio público y devuelve en cada resultado licencia, autor y texto de atribución. | API REST sin clave (límites bajos) o con clave gratuita registrada por la app. |
+| **Wikimedia Commons** — respaldo | Contenido libre, enorme colección de arte cristiano clásico (pinturas, vitrales, iglesias) en dominio público. | API MediaWiki pública, sin clave. |
+| Pixabay / Pexels — opcional | Licencias propias permisivas (no son open source); sólo si el usuario pega su propia API key. | Clave del usuario. |
+
+Diseño:
+- **Panel "Buscar fondos"** en la biblioteca de medios: búsqueda en español con traducción a palabras clave en inglés (diccionario curado: "cruz" → cross, "adoración" → worship…), **categorías rápidas** curadas (Cruz, Cielo y nubes, Amanecer, Naturaleza, Iglesia, Vitrales, Biblia, Navidad, Semana Santa, Bautismo, Santa Cena), filtro de orientación horizontal y resolución mínima (≥1920 px de ancho).
+- **Filtro de licencia** por defecto: sólo licencias que permiten uso comercial y modificación (CC0, PDM, CC BY, CC BY-SA); excluir NC/ND salvo que el usuario lo cambie.
+- Al descargar: guardar la imagen en la biblioteca local con **metadatos de licencia** (fuente, autor, URL, licencia, texto de atribución). Se proyecta siempre desde el disco: **nunca se depende de internet durante el culto**.
+- **Atribución**: visible en la biblioteca, opción en el tema para mostrar un crédito pequeño en la esquina, y página "Créditos de imágenes" exportable.
+- Las peticiones salen desde Rust (no desde el WebView): caché de resultados, respeto de límites (HTTP 429 → reintento con espera), User-Agent identificable, sin scraping.
+- Moderación: activar `mature=false` / filtros de contenido sensible de cada API; el operador previsualiza antes de descargar.
+
 #### F. Experiencia moderna
 
 - **Paleta de comandos** (Cmd/Ctrl+K) para todo: buscar canción, versículo, ejecutar acciones.
