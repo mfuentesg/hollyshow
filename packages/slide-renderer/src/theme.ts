@@ -25,3 +25,13 @@ export const defaultTheme: Theme = {
   showCopyright: true,
   maxLinesPerSlide: 4,
 };
+
+/** Theme for an output: the slide's own theme wins, then the output's, then the default. */
+export function pickTheme(themes: Theme[], ...ids: Array<string | null | undefined>): Theme {
+  for (const id of ids) {
+    if (!id) continue;
+    const t = themes.find((x) => x.id === id);
+    if (t) return t;
+  }
+  return themes.find((t) => t.id === defaultTheme.id) ?? defaultTheme;
+}
