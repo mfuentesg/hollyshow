@@ -16,7 +16,23 @@ Fuera de alcance por ahora: subtítulos con IA, NDI, MIDI/OSC, iluminación, Pla
 
 ## Capturas
 
-_Pendiente: añadir capturas de pantalla en `docs/screenshots/` (operador, salida, control remoto)._
+Capturas de la interfaz con el contenido de demostración (dominio público). Se regeneran con `pnpm screenshots`.
+
+|                  Operador: culto en vivo                  |                              Biblia multiversión                              |
+| :-------------------------------------------------------: | :---------------------------------------------------------------------------: |
+| ![Operador: culto en vivo](docs/screenshots/operador.png) | ![Biblia en dos versiones a la vez](docs/screenshots/biblia-multiversion.png) |
+
+|                                Editor de canciones                                 |                                    Buscar fondos                                     |
+| :--------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------: |
+| ![Editor de canciones con acordes y arreglos](docs/screenshots/editor-cancion.png) | ![Panel para buscar fondos con licencia abierta](docs/screenshots/buscar-fondos.png) |
+
+|                           Ajustes: remoto y emparejamiento                            |                         Salida del proyector                         |
+| :-----------------------------------------------------------------------------------: | :------------------------------------------------------------------: |
+| ![Ajustes de control remoto con código QR y PIN](docs/screenshots/ajustes-remoto.png) | ![Salida principal a pantalla completa](docs/screenshots/salida.png) |
+
+|                                 Pantalla de escenario                                 |                                    Remoto móvil: operador                                    |                                        Remoto móvil: congregación                                        |
+| :-----------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------: |
+| ![Pantalla de escenario con la siguiente diapositiva](docs/screenshots/escenario.png) | <img src="docs/screenshots/remoto-operador.png" alt="Remoto móvil del operador" width="220"> | <img src="docs/screenshots/remoto-congregacion.png" alt="Remoto móvil para la congregación" width="220"> |
 
 ## Requisitos
 
@@ -30,6 +46,7 @@ pnpm bootstrap      # primera vez en un clon: instala y construye los frontends 
 pnpm dev            # app de escritorio (Tauri + Vite)
 pnpm dev:web        # solo UI en el navegador con datos de demostración
 pnpm dev:remote     # app remota móvil
+pnpm screenshots    # regenera docs/screenshots (usa Chromium; CHROMIUM_PATH si no está en la ruta por defecto)
 pnpm gen:types      # regenera los tipos TS desde Rust (ts-rs); commitea packages/protocol/src/generated
 pnpm check:version  # Cargo.toml, package.json y tag coherentes (el release lo exige)
 pnpm lint && pnpm typecheck && pnpm test

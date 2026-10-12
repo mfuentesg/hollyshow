@@ -1,4 +1,5 @@
 import {
+  createMockMedia,
   emptyState,
   mockApply,
   type Ack,
@@ -514,6 +515,7 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
   }
 
   const api: HollyApi = {
+    ...createMockMedia(),
     transport: "mock",
     dispatch,
     query,

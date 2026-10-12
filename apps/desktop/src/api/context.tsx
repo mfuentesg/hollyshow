@@ -1,6 +1,7 @@
 import type { HollyApi } from "@hollyshow/protocol";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { createDemoBackend } from "./demo/backend";
+import { applyDemoPreset } from "./demo/preset";
 import type { HostApi } from "./host";
 import { createTauriApi } from "./tauri";
 import { createTauriHost } from "./hostTauri";
@@ -27,6 +28,7 @@ export function ApiProvider({
     if (api && host) return { api, host };
     if (inTauri()) return { api: api ?? createTauriApi(), host: host ?? createTauriHost() };
     const demo = createDemoBackend();
+    void applyDemoPreset(demo.api, window.location.search);
     return { api: api ?? demo.api, host: host ?? demo.host };
   }, [api, host]);
   return (

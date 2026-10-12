@@ -18,6 +18,7 @@
     "format": "prettier --write .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "screenshots": "node scripts/screenshots.mjs",
     "gen:types": "node scripts/gen-types.mjs"
   },
   "devDependencies": {
@@ -25,7 +26,9 @@
     "eslint": "^9.39.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^16.0.0",
+    "playwright-core": "1.56.1",
     "prettier": "^3.6.0",
+    "sharp": "^0.35.5",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.0"
   },
