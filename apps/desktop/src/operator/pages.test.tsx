@@ -114,11 +114,20 @@ describe("library settings", () => {
   it("builds the usage report and escapes the CSV", async () => {
     const { usageCsv } = await import("./settings/LibrarySettings");
     const csv = usageCsv(
-      [{ songId: "a", title: 'Santo, "santo"', ccli: "123", timesShown: 2, lastShownAt: 0 }],
-      ["Canción", "CCLI", "Veces", "Última"],
+      [
+        {
+          songId: "a",
+          title: 'Santo, "santo"',
+          author: "Ana",
+          ccli: "123",
+          timesShown: 2,
+          lastShownAt: 0,
+        },
+      ],
+      ["Canción", "Autor", "CCLI", "Veces", "Última"],
     );
-    expect(csv.split("\n")[0]).toBe("Canción,CCLI,Veces,Última");
-    expect(csv.split("\n")[1]).toMatch(/^"Santo, ""santo""",123,2,\d{4}-\d{2}-\d{2}$/);
+    expect(csv.split("\n")[0]).toBe("Canción,Autor,CCLI,Veces,Última");
+    expect(csv.split("\n")[1]).toMatch(/^"Santo, ""santo""",Ana,123,2,\d{4}-\d{2}-\d{2}$/);
   });
 
   it("lists the songs shown in the period", async () => {

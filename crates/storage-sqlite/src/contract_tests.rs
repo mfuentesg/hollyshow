@@ -256,14 +256,18 @@ fn usage_report_counts_per_song_and_survives_deletion() {
     let s = Store::open_in_memory().unwrap();
     let mut a = song("a", "Alfa", "x");
     a.ccli = Some("111".into());
+    a.author = Some("Autora".into());
     hollyshow_storage_api::SongRepo::save(&s, &a).unwrap();
     hollyshow_storage_api::SongRepo::save(&s, &song("b", "Beta", "y")).unwrap();
     for t in [100, 200, 300] {
         hollyshow_storage_api::SongRepo::log_usage(&s, &SongId::new("a"), t).unwrap();
     }
     hollyshow_storage_api::SongRepo::log_usage(&s, &SongId::new("b"), 250).unwrap();
+    let rep = s.usage_report(0, 1000).unwrap();
+    assert_eq!(rep[0].author.as_deref(), Some("Autora"));
     hollyshow_storage_api::SongRepo::delete(&s, &SongId::new("a")).unwrap();
     let rep = s.usage_report(0, 1000).unwrap();
+    assert_eq!(rep[0].author, None);
     assert_eq!(rep[0].song_id.as_str(), "a");
     assert_eq!(rep[0].times_shown, 3);
     assert_eq!(rep[0].title.as_deref(), Some("Alfa"));

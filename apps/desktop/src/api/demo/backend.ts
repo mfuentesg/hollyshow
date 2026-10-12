@@ -725,6 +725,7 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
           ccli: song?.ccli ?? null,
           timesShown: 0,
           lastShownAt: 0,
+          author: song?.author ?? null,
         };
         row.timesShown += 1;
         row.lastShownAt = Math.max(row.lastShownAt, u.shownAt);

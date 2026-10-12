@@ -4,20 +4,21 @@ use crate::guard::contain;
 use crate::query;
 use crate::session::RoleFeed;
 use crate::show::build_show;
-use crate::usage::UsageLogger;
+use crate::usage::{now_ms, UsageDedupe, UsageLogger};
 use crate::writer::SessionWriter;
 mod library;
 use hollyshow_bible::{build_bible_slide, VersionText};
 use hollyshow_core::{
-    project, Ack, BibleVersion, Command, CommandId, CoreError, Cue, EngineCommand, Event, ItemId,
-    LibraryScope, ParallelLayout, Passage, PlaylistId, QueryRequest, QueryResponse, Restore, Role,
-    ServerMsg, SessionId, ShowEntry, Slide, Target, Timer, Verse, VersionCode, WireError,
+    project, Ack, BibleVersion, Command, CommandId, CoreError, Cue, EngineCommand, Event,
+    ItemContent, ItemId, LibraryScope, ParallelLayout, Passage, PlaylistId, QueryRequest,
+    QueryResponse, Restore, Role, ServerMsg, SessionId, ShowEntry, Slide, SongId, Target, Timer,
+    Verse, VersionCode, WireError,
 };
 use hollyshow_engine::{Dispatched, Engine, Outcome};
 use hollyshow_songs::SlideSplitter;
 use hollyshow_storage_api::Repos;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// How long an explicit flush (exit, panic hook) waits for the writer thread.
@@ -74,8 +75,10 @@ struct HostState {
     /// opened. They never write back to the song library.
     live_edits: HashMap<(ItemId, u32), Slide>,
     last_saved: Option<String>,
-    /// Song items already counted in the usage log for the open service (one count per service).
-    usage_logged: HashSet<ItemId>,
+    /// Song behind each song item of the open service, so going live resolves the song in memory.
+    song_items: HashMap<ItemId, SongId>,
+    /// CCLI dedupe state (see `usage::UsageDedupe`).
+    usage_dedupe: UsageDedupe,
 }
 
 pub struct AppService {
@@ -213,19 +216,18 @@ impl AppService {
         ack
     }
 
-    /// Counts the live song once per service for the CCLI report. Cheap and non-blocking: the
-    /// lookup and the insert happen on the usage thread.
+    /// Logs the live song for the CCLI report, whatever way it went live (service item, command
+    /// palette, remote). Cheap and non-blocking: only the insert happens on the usage thread.
     fn note_usage(&self) {
-        let Some(item) = self.engine.view().live.and_then(|c| c.item_id) else {
-            return;
-        };
+        let item = self.engine.view().live.and_then(|c| c.item_id);
         let mut host = self.host();
-        let Some(playlist) = host.active_playlist.clone() else {
-            return;
-        };
-        if host.usage_logged.insert(item.clone()) {
+        let song = item.and_then(|i| host.song_items.get(&i).cloned());
+        let now = now_ms();
+        if host.usage_dedupe.observe(song.as_ref(), now) {
             drop(host);
-            self.usage.submit(playlist, item);
+            if let Some(song) = song {
+                self.usage.submit(song, now);
+            }
         }
     }
 
@@ -298,17 +300,17 @@ impl AppService {
             .ok_or_else(|| CoreError::Invalid(format!("unknown playlist {playlist}")))?;
         if host.active_playlist.as_ref() != Some(playlist) {
             host.live_edits.clear();
-            host.usage_logged.clear();
+            host.usage_dedupe.reset();
         }
         host.active_playlist = Some(playlist.clone());
-        let out = self.load_playlist(&host, &pl);
+        let out = self.load_playlist(&mut host, &pl);
         self.persist_locked(&mut host);
         out
     }
 
     /// Rebuilds the show from the active playlist, keeping live edits on top.
     pub fn refresh_show(&self) -> Result<Outcome, CoreError> {
-        let host = self.host();
+        let mut host = self.host();
         let id = host
             .active_playlist
             .clone()
@@ -319,14 +321,22 @@ impl AppService {
             .get(&id)
             .map_err(|e| storage_to_core(&e))?
             .ok_or_else(|| CoreError::Invalid(format!("active playlist {id} was deleted")))?;
-        self.load_playlist(&host, &pl)
+        self.load_playlist(&mut host, &pl)
     }
 
     fn load_playlist(
         &self,
-        host: &HostState,
+        host: &mut HostState,
         pl: &hollyshow_core::Playlist,
     ) -> Result<Outcome, CoreError> {
+        host.song_items = pl
+            .items
+            .iter()
+            .filter_map(|i| match &i.content {
+                ItemContent::Song { song_id, .. } => Some((i.id.clone(), song_id.clone())),
+                _ => None,
+            })
+            .collect();
         let mut entries = build_show(&self.repos, self.splitter.as_ref(), pl);
         for ((item, index), edit) in &host.live_edits {
             let slot = entries
@@ -683,6 +693,28 @@ mod tests {
         assert_eq!(seen, 1);
         assert_eq!(f.store.song_usage().len(), 1);
         assert_eq!(f.store.song_usage()[0].0, hollyshow_core::SongId::new("s1"));
+    }
+
+    #[test]
+    fn the_same_song_in_two_items_is_one_use() {
+        let f = fixture();
+        let mut pl = playlist();
+        let mut second = pl.items[0].clone();
+        second.id = ItemId::new("i2");
+        pl.items.push(second);
+        PlaylistRepo::save(&*f.store, &pl).unwrap();
+        let live = |id: &str| Command::ShowItem {
+            item_id: ItemId::new(id),
+            target: Target::Live,
+        };
+        let open = Command::SetActivePlaylist {
+            id: PlaylistId::new("p1"),
+        };
+        assert!(f.app.dispatch(&op(), None, open).ok);
+        assert!(f.app.dispatch(&op(), None, live("i1")).ok);
+        assert!(f.app.dispatch(&op(), None, live("i2")).ok);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert_eq!(f.store.song_usage().len(), 1);
     }
 
     #[test]

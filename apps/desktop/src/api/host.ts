@@ -124,6 +124,7 @@ export interface BibleVersionPatch {
 export interface UsageRow {
   songId: string;
   title: string | null;
+  author: string | null;
   ccli: string | null;
   timesShown: number;
   /** Epoch ms of the last time it went live. */

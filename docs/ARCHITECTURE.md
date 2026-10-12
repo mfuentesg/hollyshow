@@ -154,8 +154,9 @@ El estado Rust es la fuente de verdad **del show expandido**, pero la fuente del
 - **ACL de Tauri**: `build.rs` declara todos los comandos (`AppManifest`), de modo que cada uno tiene un permiso `allow-<nombre>`.
   `capabilities/default.json` (ventana `main`) los concede todos; `capabilities/render-only.json` (`output-*`, `stage`) solo
   `get_snapshot`, `query` y `report_output_stats`. Un test comprueba que el manifiesto coincide con `generate_handler!`.
-- Registro de uso (informe CCLI): al pasar una canción a vivo, `AppService` la encola (una vez por servicio) en un hilo
-  (`usage.rs`) que escribe en `usage_log`. Los dispositivos emparejados viven solo en `settings['server.devices.v1']`.
+- Registro de uso (informe CCLI): al pasar cualquier canción a vivo (servicio, paleta, remoto), `AppService` la resuelve en memoria
+  y `UsageDedupe` (`usage.rs`) decide si cuenta: no al cambiar de diapositiva, una vez por canción en 30 min, se reinicia al abrir otro
+  servicio. Un hilo escribe en `usage_log`; el informe añade el autor actual. Los dispositivos emparejados viven solo en `settings['server.devices.v1']`.
 
 ## 5. Manejo de errores
 

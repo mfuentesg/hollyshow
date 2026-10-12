@@ -16,6 +16,8 @@ use std::collections::HashSet;
 pub struct UsageRow {
     pub song_id: SongId,
     pub title: Option<String>,
+    /// Current author of the song; `None` when the song was deleted since.
+    pub author: Option<String>,
     pub ccli: Option<String>,
     pub times_shown: u32,
     pub last_shown_at: i64,
@@ -397,7 +399,8 @@ impl Store {
         let conn = self.read();
         let mut st = conn
             .prepare_cached(
-                "SELECT song_id, MAX(title), MAX(ccli), COUNT(*), MAX(shown_at)
+                "SELECT song_id, MAX(title), MAX(ccli), COUNT(*), MAX(shown_at),
+                        (SELECT author FROM songs WHERE id = usage_log.song_id)
                  FROM usage_log WHERE shown_at >= ?1 AND shown_at < ?2
                  GROUP BY song_id ORDER BY COUNT(*) DESC, MAX(shown_at) DESC",
             )
@@ -410,6 +413,7 @@ impl Store {
                     ccli: r.get(2)?,
                     times_shown: r.get(3)?,
                     last_shown_at: r.get(4)?,
+                    author: r.get(5)?,
                 })
             })
             .map_err(map_err)?

@@ -25,11 +25,19 @@ function csvCell(v: string | number): string {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** The report as CSV (title, CCLI number, times shown, last shown date). */
-export function usageCsv(rows: UsageRow[], header: [string, string, string, string]): string {
+export type UsageHeader = [string, string, string, string, string];
+
+/** The report as CSV (title, author, CCLI number, times shown, last shown date). */
+export function usageCsv(rows: UsageRow[], header: UsageHeader): string {
   const lines = [
     header,
-    ...rows.map((r) => [r.title ?? "", r.ccli ?? "", r.timesShown, dateInput(r.lastShownAt)]),
+    ...rows.map((r) => [
+      r.title ?? "",
+      r.author ?? "",
+      r.ccli ?? "",
+      r.timesShown,
+      dateInput(r.lastShownAt),
+    ]),
   ];
   return lines.map((l) => l.map(csvCell).join(",")).join("\n");
 }
@@ -66,17 +74,33 @@ export function LibrarySettings() {
       setRows(await host.usageReport(dayStart(from), dayStart(to) + DAY_MS));
     });
 
+  const csv = () => {
+    const header: UsageHeader = [
+      t("settings.library.colTitle"),
+      t("settings.library.colAuthor"),
+      t("settings.library.colCcli"),
+      t("settings.library.colTimes"),
+      t("settings.library.colLast"),
+    ];
+    return usageCsv(rows ?? [], header);
+  };
+
   const copyCsv = () =>
     guard(async () => {
-      const header: [string, string, string, string] = [
-        t("settings.library.colTitle"),
-        t("settings.library.colCcli"),
-        t("settings.library.colTimes"),
-        t("settings.library.colLast"),
-      ];
-      await navigator.clipboard.writeText(usageCsv(rows ?? [], header));
+      await navigator.clipboard.writeText(csv());
       toasts.push(t("settings.library.copied"), "success");
     });
+
+  const downloadCsv = () => {
+    // BOM so spreadsheets open accents correctly.
+    const blob = new Blob(["\ufeff", csv()], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ccli-${from}_${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const exportAll = () =>
     guard(async () => {
@@ -139,6 +163,9 @@ export function LibrarySettings() {
           <Button variant="ghost" disabled={busy || !rows?.length} onClick={() => void copyCsv()}>
             {t("settings.library.copyCsv")}
           </Button>
+          <Button variant="ghost" disabled={busy || !rows?.length} onClick={downloadCsv}>
+            {t("settings.library.downloadCsv")}
+          </Button>
         </div>
         {rows &&
           (rows.length === 0 ? (
@@ -149,6 +176,7 @@ export function LibrarySettings() {
                 <thead>
                   <tr>
                     <th scope="col">{t("settings.library.colTitle")}</th>
+                    <th scope="col">{t("settings.library.colAuthor")}</th>
                     <th scope="col">{t("settings.library.colCcli")}</th>
                     <th scope="col">{t("settings.library.colTimes")}</th>
                     <th scope="col">{t("settings.library.colLast")}</th>
@@ -158,6 +186,7 @@ export function LibrarySettings() {
                   {rows.map((r) => (
                     <tr key={r.songId}>
                       <td>{r.title ?? r.songId}</td>
+                      <td>{r.author ?? "—"}</td>
                       <td>{r.ccli ?? "—"}</td>
                       <td>{r.timesShown}</td>
                       <td>{dateInput(r.lastShownAt)}</td>
