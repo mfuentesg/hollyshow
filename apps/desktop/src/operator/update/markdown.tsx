@@ -1,11 +1,11 @@
 import { Fragment, type ReactNode } from "react";
+import { isExternalUrl } from "../../lib/external";
+import { ExternalLink } from "../ExternalLink";
 
 /**
  * Minimal, safe Markdown renderer for release notes. It builds React elements only: raw HTML in
- * the notes is shown as literal text, links are limited to http(s)/mailto and images are dropped.
+ * the notes is shown as literal text, links are limited to https (opened in the system browser) and images are dropped.
  */
-
-const SAFE_URL = /^(https?:\/\/|mailto:)/i;
 
 const INLINE =
   /(`[^`\n]+`)|(\*\*[^*\n]+\*\*|__[^_\n]+__)|(\*[^*\s][^*\n]*\*|_[^_\s][^_\n]*_)|(!?\[[^\]\n]*\]\([^)\s]*\))|(https?:\/\/[^\s<>()]+)/g;
@@ -29,22 +29,18 @@ export function renderInline(text: string, keyBase = "i"): ReactNode[] {
       const isImage = tok.startsWith("!");
       const label = tok.slice(tok.indexOf("[") + 1, tok.indexOf("]("));
       const url = tok.slice(tok.indexOf("](") + 2, -1);
-      if (isImage || !SAFE_URL.test(url)) {
+      if (isImage || !isExternalUrl(url)) {
         out.push(label); // never load remote images or run javascript: links
       } else {
         out.push(
-          <a key={key} href={url} target="_blank" rel="noopener noreferrer">
+          <ExternalLink key={key} href={url}>
             {renderInline(label, key)}
-          </a>,
+          </ExternalLink>,
         );
       }
     } else if (m[5]) {
       const url = tok.replace(/[.,;:!?]+$/, "");
-      out.push(
-        <a key={key} href={url} target="_blank" rel="noopener noreferrer">
-          {url}
-        </a>,
-      );
+      out.push(<ExternalLink key={key} href={url} />);
       if (url.length < tok.length) out.push(tok.slice(url.length));
     }
     last = at + tok.length;

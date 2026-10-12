@@ -80,7 +80,7 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }));
-    let built = updater::plugins(builder)
+    let built = updater::plugins(builder.plugin(tauri_plugin_opener::init()))
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, media::handle)
         .on_window_event(windows::on_window_event)
         .invoke_handler(tauri::generate_handler![

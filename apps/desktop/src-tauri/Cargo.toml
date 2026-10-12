@@ -37,6 +37,7 @@ serde_json.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-opener = "2"
 base64 = "0.22"
 flate2 = "1"
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }

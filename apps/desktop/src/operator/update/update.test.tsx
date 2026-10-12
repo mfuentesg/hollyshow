@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "../../i18n";
 import { ToastProvider } from "../../hooks/useToasts";
 import { Markdown, parseBlocks } from "./markdown";
@@ -77,6 +77,16 @@ describe("markdown", () => {
     expect(links.map((a) => a.getAttribute("href"))).toEqual(["https://ok.example/p"]);
     expect(links[0]?.getAttribute("rel")).toContain("noopener");
     expect(container.textContent).toContain("mal");
+  });
+
+  it("opens links in the system browser without navigating the webview", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const user = userEvent.setup();
+    render(<Markdown source="[ver](https://example.com/x) [http](http://example.com/y)" />);
+    expect(screen.queryByRole("link", { name: "http" })).toBeNull();
+    await user.click(screen.getByRole("link", { name: "ver" }));
+    expect(open).toHaveBeenCalledWith("https://example.com/x", "_blank", "noopener,noreferrer");
+    open.mockRestore();
   });
 
   it("parses fenced code verbatim", () => {

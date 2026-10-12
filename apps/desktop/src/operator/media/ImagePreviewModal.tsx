@@ -1,6 +1,7 @@
 import type { MediaLibraryItem, MediaResult } from "@hollyshow/protocol";
 import { Button, Modal } from "@hollyshow/ui";
 import { useState } from "react";
+import { ExternalLink } from "../ExternalLink";
 import { LicenseBadge } from "./LicenseBadge";
 import { formatBytes } from "./license";
 import type { MediaT } from "./strings";
@@ -72,9 +73,7 @@ export function ImagePreviewModal({
           <dd>
             {result.creator ? (
               result.creatorUrl ? (
-                <a href={result.creatorUrl} target="_blank" rel="noreferrer noopener">
-                  {result.creator}
-                </a>
+                <ExternalLink href={result.creatorUrl}>{result.creator}</ExternalLink>
               ) : (
                 result.creator
               )
@@ -85,17 +84,13 @@ export function ImagePreviewModal({
           <dt>{t("license")}</dt>
           <dd>
             <LicenseBadge license={result.license} />{" "}
-            {result.licenseUrl && (
-              <a href={result.licenseUrl} target="_blank" rel="noreferrer noopener">
-                {result.licenseUrl}
-              </a>
-            )}
+            {result.licenseUrl && <ExternalLink href={result.licenseUrl} />}
           </dd>
           <dt>{t("origin")}</dt>
           <dd>
-            <a href={result.sourcePage} target="_blank" rel="noreferrer noopener">
+            <ExternalLink href={result.sourcePage}>
               {result.source === "openverse" ? t("sourceOpenverse") : t("sourceCommons")}
-            </a>
+            </ExternalLink>
           </dd>
           <dt>{t("size")}</dt>
           <dd>{downloaded ? `${size} · ${formatBytes(downloaded.bytes)}` : size}</dd>
