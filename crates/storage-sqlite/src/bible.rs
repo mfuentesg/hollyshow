@@ -65,30 +65,46 @@ fn exists(conn: &Connection, code: &VersionCode) -> StorageResult<bool> {
 /// Verses per transaction when installing a Bible.
 const INSTALL_BATCH: usize = 2000;
 
+/// Prefix of the staging code a Bible is installed under until it is complete. Rows with this
+/// prefix are "installing": invisible to every listing and removed at start-up. User codes may
+/// not use it.
+const STAGING_PREFIX: &str = "~installing~";
+
+fn staging_code(code: &VersionCode) -> String {
+    format!("{STAGING_PREFIX}{}", code.0)
+}
+
 /// Replaces the installed copy of `version` (metadata and verses) inside `conn`'s transaction.
 pub(crate) fn install(
     conn: &Connection,
     version: &BibleVersion,
     verses: &[Verse],
 ) -> StorageResult<()> {
-    install_header(conn, version)?;
-    install_verses(conn, version, verses)?;
-    finish_install(conn, version)
+    let stage = staging_code(&version.code);
+    install_header(conn, version, &stage)?;
+    install_verses(conn, &stage, verses)?;
+    finish_install(conn, version, &stage)
 }
 
-/// Step 1: drops the old copy and inserts the version row, disabled until the last step so a
-/// partially installed version is never offered.
-fn install_header(conn: &Connection, version: &BibleVersion) -> StorageResult<()> {
+/// Step 1: inserts the version row under the staging code `stage`, disabled and hidden. The
+/// previous copy of the same code (if any) is untouched and stays usable.
+fn install_header(conn: &Connection, version: &BibleVersion, stage: &str) -> StorageResult<()> {
     if version.code.0.trim().is_empty() {
         return Err(StorageError::Invalid("bible version code is empty".into()));
     }
-    remove(conn, &version.code)?;
+    if version.code.0.starts_with(STAGING_PREFIX) {
+        return Err(StorageError::Invalid(format!(
+            "bible version code may not start with {STAGING_PREFIX}"
+        )));
+    }
+    // A leftover staging copy of the same code (an earlier crash in this process) is replaced.
+    remove_code(conn, stage)?;
     conn.execute(
         "INSERT INTO bibles (code, name, language, license, copyright_text, is_public_domain,
                              versification, sort_order, is_enabled, is_default, is_secondary)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0, 0)",
         params![
-            version.code.0,
+            stage,
             version.name,
             version.language,
             version.license,
@@ -102,12 +118,31 @@ fn install_header(conn: &Connection, version: &BibleVersion) -> StorageResult<()
     Ok(())
 }
 
-/// Step 3: applies enabled/default/secondary exclusivity and enables the version.
-fn finish_install(conn: &Connection, version: &BibleVersion) -> StorageResult<()> {
+/// Step 3, one short transaction: drops the previous copy of the code, renames the staged rows
+/// to the real code, applies enabled/default/secondary exclusivity and enables the version.
+fn finish_install(conn: &Connection, version: &BibleVersion, stage: &str) -> StorageResult<()> {
+    let code = &version.code.0;
+    remove_code(conn, code)?;
+    // The rename touches the parent and child rows in turn; check the constraint at commit.
+    conn.pragma_update(None, "defer_foreign_keys", true)
+        .map_err(map_err)?;
+    conn.execute("UPDATE bibles SET code = ?2 WHERE code = ?1", [stage, code])
+        .map_err(map_err)?;
+    conn.execute(
+        "UPDATE bible_verses SET version = ?2 WHERE version = ?1",
+        [stage, code],
+    )
+    .map_err(map_err)?;
+    conn.execute(
+        "UPDATE bible_fts SET version = ?2 WHERE rowid IN
+            (SELECT id FROM bible_verses WHERE version = ?2)",
+        [stage, code],
+    )
+    .map_err(map_err)?;
     let has_default: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM bibles WHERE is_default = 1 AND code <> ?1)",
-            [&version.code.0],
+            [code],
             |r| r.get(0),
         )
         .map_err(map_err)?;
@@ -124,7 +159,7 @@ fn finish_install(conn: &Connection, version: &BibleVersion) -> StorageResult<()
     conn.execute(
         "UPDATE bibles SET is_enabled = ?2, is_default = ?3, is_secondary = ?4 WHERE code = ?1",
         params![
-            version.code.0,
+            code,
             version.is_enabled,
             make_default,
             version.is_secondary && !make_default
@@ -134,12 +169,8 @@ fn finish_install(conn: &Connection, version: &BibleVersion) -> StorageResult<()
     Ok(())
 }
 
-/// Step 2 (repeatable): inserts a batch of verses.
-fn install_verses(
-    conn: &Connection,
-    version: &BibleVersion,
-    verses: &[Verse],
-) -> StorageResult<()> {
+/// Step 2 (repeatable): inserts a batch of verses under the staging code.
+fn install_verses(conn: &Connection, stage: &str, verses: &[Verse]) -> StorageResult<()> {
     let mut ins = conn
         .prepare_cached(
             "INSERT INTO bible_verses (version, book, chapter, verse, text, markup)
@@ -159,7 +190,7 @@ fn install_verses(
         let id: i64 = ins
             .query_row(
                 params![
-                    version.code.0,
+                    stage,
                     v.reference.book.0,
                     v.reference.chapter,
                     v.reference.verse.unwrap_or(0),
@@ -171,20 +202,43 @@ fn install_verses(
             .map_err(map_err)?;
         // A duplicated reference in the input replaced the text above; keep one FTS row.
         del_fts.execute([id]).map_err(map_err)?;
-        fts.execute(params![id, fold(&v.text), version.code.0])
+        fts.execute(params![id, fold(&v.text), stage])
             .map_err(map_err)?;
     }
     Ok(())
 }
 
+/// Deletes every half-installed (staging) copy. Returns how many were removed.
+pub(crate) fn cleanup_installing(conn: &Connection) -> StorageResult<usize> {
+    let codes: Vec<String> = {
+        let mut st = conn
+            .prepare("SELECT code FROM bibles WHERE code LIKE ?1")
+            .map_err(map_err)?;
+        let rows = st
+            .query_map([format!("{STAGING_PREFIX}%")], |r| r.get(0))
+            .map_err(map_err)?
+            .collect::<Result<_, _>>()
+            .map_err(map_err)?;
+        rows
+    };
+    for c in &codes {
+        remove_code(conn, c)?;
+    }
+    Ok(codes.len())
+}
+
 fn remove(conn: &Connection, code: &VersionCode) -> StorageResult<()> {
+    remove_code(conn, &code.0)
+}
+
+fn remove_code(conn: &Connection, code: &str) -> StorageResult<()> {
     conn.execute(
         "DELETE FROM bible_fts WHERE rowid IN (SELECT id FROM bible_verses WHERE version = ?1)",
-        [&code.0],
+        [code],
     )
     .map_err(map_err)?;
     // Verses go with the version (ON DELETE CASCADE).
-    conn.execute("DELETE FROM bibles WHERE code = ?1", [&code.0])
+    conn.execute("DELETE FROM bibles WHERE code = ?1", [code])
         .map_err(map_err)?;
     Ok(())
 }
@@ -192,7 +246,8 @@ fn remove(conn: &Connection, code: &VersionCode) -> StorageResult<()> {
 pub(crate) fn all_versions(conn: &Connection) -> StorageResult<Vec<BibleVersion>> {
     let mut st = conn
         .prepare_cached(&format!(
-            "SELECT {VERSION_COLS} FROM bibles ORDER BY sort_order, code"
+            "SELECT {VERSION_COLS} FROM bibles WHERE code NOT LIKE '{STAGING_PREFIX}%'
+             ORDER BY sort_order, code"
         ))
         .map_err(map_err)?;
     let rows = st
@@ -219,35 +274,70 @@ pub(crate) fn all_verses(conn: &Connection, code: &VersionCode) -> StorageResult
 }
 
 impl Store {
-    /// Installs (or reinstalls) a Bible version with its verses, atomically.
+    /// Installs (or reinstalls) a Bible version with its verses, crash-safely.
     ///
     /// `verses` must be in canonical order (Genesis to Revelation): the insertion order defines
     /// how passages that span chapters or books are resolved. The first version installed becomes
     /// the default; `is_default`/`is_secondary` on `version` keep their exclusivity.
     ///
-    /// The ~31k verses go in batches of [`INSTALL_BATCH`], each in its own short transaction that
-    /// releases the connection lock in between, so queries and command acks are not stalled for
-    /// the whole install. The version stays disabled (hidden) until the last batch commits; a
-    /// crash mid-way leaves a hidden partial copy that a reinstall replaces.
+    /// The ~31k verses go in batches of [`INSTALL_BATCH`] under a hidden staging code, each batch
+    /// in its own short transaction that releases the connection lock in between, so queries and
+    /// command acks are not stalled for the whole install. Only the last step, one short
+    /// transaction, removes the previous copy of the same code and renames the staged rows into
+    /// place. Until then the previous version stays fully usable; a crash leaves only staging
+    /// rows, which [`Store::open`] (or [`Store::cleanup_installing`]) deletes.
     pub fn install_bible(&self, version: &BibleVersion, verses: &[Verse]) -> StorageResult<()> {
+        self.install_staged(version, verses, None)
+    }
+
+    /// Removes leftover half-installed Bibles (an install interrupted by a crash). Runs on
+    /// [`Store::open`]; returns how many were deleted.
+    pub fn cleanup_installing(&self) -> StorageResult<usize> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(map_err)?;
+        let n = cleanup_installing(&tx)?;
+        tx.commit().map_err(map_err)?;
+        Ok(n)
+    }
+
+    /// `install_bible`; `crash_after` (tests) abandons the install after that many verse
+    /// batches without cleaning up, like a killed process would.
+    pub(crate) fn install_staged(
+        &self,
+        version: &BibleVersion,
+        verses: &[Verse],
+        crash_after: Option<usize>,
+    ) -> StorageResult<()> {
+        let stage = staging_code(&version.code);
         let step = |f: &dyn Fn(&Connection) -> StorageResult<()>| -> StorageResult<()> {
             let mut conn = self.lock();
             let tx = conn.transaction().map_err(map_err)?;
             f(&tx)?;
             tx.commit().map_err(map_err)
         };
-        step(&|c| install_header(c, version))?;
-        let run = || -> StorageResult<()> {
-            for chunk in verses.chunks(INSTALL_BATCH) {
-                step(&|c| install_verses(c, version, chunk))?;
+        step(&|c| install_header(c, version, &stage))?;
+        let run = || -> StorageResult<bool> {
+            for (i, chunk) in verses.chunks(INSTALL_BATCH).enumerate() {
+                if crash_after == Some(i) {
+                    return Ok(false);
+                }
+                step(&|c| install_verses(c, &stage, chunk))?;
                 std::thread::yield_now();
             }
-            step(&|c| finish_install(c, version))
+            if crash_after.is_some() {
+                return Ok(false);
+            }
+            step(&|c| finish_install(c, version, &stage))?;
+            Ok(true)
         };
-        run().inspect_err(|_| {
-            // Do not leave a half-installed copy behind.
-            let _ = step(&|c| remove(c, &version.code));
-        })
+        match run() {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Do not leave a half-installed copy behind; the previous version is untouched.
+                let _ = step(&|c| remove_code(c, &stage));
+                Err(e)
+            }
+        }
     }
 
     /// Sets the presentation order of the installed versions: `codes[0]` first. Versions not
@@ -427,18 +517,27 @@ impl BibleRepo for Store {
                 "SELECT v.version, v.book, v.chapter, v.verse, v.text
                  FROM bible_fts f JOIN bible_verses v ON v.id = f.rowid
                  WHERE bible_fts MATCH ?1 AND (?2 IS NULL OR f.version = ?2)
+                   AND f.version NOT LIKE ?4
                  ORDER BY f.rank, v.id
                  LIMIT ?3",
             )
             .map_err(map_err)?;
         let rows = st
-            .query_map(params![query, version.map(|v| v.0.as_str()), limit], |r| {
-                Ok(BibleHit {
-                    version: VersionCode(r.get(0)?),
-                    reference: ref_of(r.get(1)?, r.get(2)?, r.get(3)?),
-                    text: r.get(4)?,
-                })
-            })
+            .query_map(
+                params![
+                    query,
+                    version.map(|v| v.0.as_str()),
+                    limit,
+                    format!("{STAGING_PREFIX}%")
+                ],
+                |r| {
+                    Ok(BibleHit {
+                        version: VersionCode(r.get(0)?),
+                        reference: ref_of(r.get(1)?, r.get(2)?, r.get(3)?),
+                        text: r.get(4)?,
+                    })
+                },
+            )
             .map_err(map_err)?
             .collect::<Result<_, _>>()
             .map_err(map_err)?;

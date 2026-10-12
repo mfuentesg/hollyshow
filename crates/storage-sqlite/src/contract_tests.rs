@@ -666,3 +666,87 @@ fn bible_order_is_persisted_and_ignores_unknown_codes() {
     // Unlisted versions follow, keeping their relative order.
     assert_eq!(codes(&store), ["C", "A", "B"]);
 }
+
+fn many_verses(n: u16, tag: &str) -> Vec<Verse> {
+    (1..=n)
+        .map(|i| verse("Gen", 1, i, &format!("{tag} versiculo {i}")))
+        .collect()
+}
+
+fn codes_of(s: &Store) -> Vec<String> {
+    BibleRepo::list_versions(s)
+        .unwrap()
+        .into_iter()
+        .map(|v| v.code.0)
+        .collect()
+}
+
+#[test]
+fn interrupted_install_is_hidden_and_keeps_previous_version() {
+    let s = Store::open_in_memory().unwrap();
+    let code = VersionCode("RVR".into());
+    s.install_bible(&version("RVR", 1), &many_verses(10, "viejo"))
+        .unwrap();
+    // "Crash" after two batches of a bigger reinstall.
+    s.install_staged(&version("RVR", 1), &many_verses(5000, "nuevo"), Some(2))
+        .unwrap();
+    // Staging is invisible; the old copy is intact and searchable.
+    assert_eq!(codes_of(&s), ["RVR"]);
+    assert_eq!(s.verse_count(&code).unwrap(), 10);
+    assert_eq!(s.search("viejo", Some(&code), 50).unwrap().len(), 10);
+    assert!(s.search("nuevo", None, 50).unwrap().is_empty());
+    // Cleanup removes the staging rows, verses and FTS entries.
+    assert_eq!(s.cleanup_installing().unwrap(), 1);
+    assert_eq!(s.cleanup_installing().unwrap(), 0);
+    let conn = s.lock();
+    let left: i64 = conn
+        .query_row("SELECT count(*) FROM bible_verses", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(left, 10);
+    let fts: i64 = conn
+        .query_row("SELECT count(*) FROM bible_fts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(fts, 10);
+}
+
+#[test]
+fn interrupted_first_install_leaves_nothing_after_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("lib.db");
+    {
+        let s = Store::open(&path).unwrap();
+        s.install_bible(&version("KJV", 1), &many_verses(3, "kjv"))
+            .unwrap();
+        s.install_staged(&version("NEW", 2), &many_verses(4500, "n"), Some(1))
+            .unwrap();
+        assert_eq!(codes_of(&s), ["KJV"]);
+    }
+    let s = Store::open(&path).unwrap();
+    assert_eq!(codes_of(&s), ["KJV"]);
+    assert_eq!(s.cleanup_installing().unwrap(), 0);
+    assert_eq!(s.verse_count(&VersionCode("KJV".into())).unwrap(), 3);
+    s.integrity_check().unwrap();
+}
+
+#[test]
+fn completed_reinstall_replaces_previous_copy_atomically() {
+    let s = Store::open_in_memory().unwrap();
+    let code = VersionCode("RVR".into());
+    s.install_bible(&version("RVR", 1), &many_verses(10, "viejo"))
+        .unwrap();
+    s.install_bible(&version("RVR", 1), &many_verses(4500, "nuevo"))
+        .unwrap();
+    assert_eq!(codes_of(&s), ["RVR"]);
+    assert_eq!(s.verse_count(&code).unwrap(), 4500);
+    assert!(s.search("viejo", Some(&code), 5).unwrap().is_empty());
+    assert_eq!(s.search("nuevo", Some(&code), 5).unwrap().len(), 5);
+    assert_eq!(s.cleanup_installing().unwrap(), 0);
+    s.integrity_check().unwrap();
+}
+
+#[test]
+fn reserved_staging_prefix_is_rejected() {
+    let s = Store::open_in_memory().unwrap();
+    let r = s.install_bible(&version("~installing~X", 1), &many_verses(1, "x"));
+    assert!(matches!(r, Err(StorageError::Invalid(_))));
+}

@@ -90,11 +90,14 @@ impl Store {
         reader
             .busy_timeout(std::time::Duration::from_secs(5))
             .map_err(map_err)?;
-        Ok(Self {
+        let store = Self {
             conn: Mutex::new(conn),
             reader: Some(Mutex::new(reader)),
             path: Some(path.to_path_buf()),
-        })
+        };
+        // An install interrupted by a crash leaves hidden staging rows behind.
+        store.cleanup_installing()?;
+        Ok(store)
     }
 
     /// Fresh in-memory database (tests, previews).
