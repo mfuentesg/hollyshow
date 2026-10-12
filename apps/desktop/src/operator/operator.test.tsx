@@ -27,7 +27,7 @@ describe("operator: service screen", () => {
     const user = userEvent.setup();
     const { backend } = renderApp();
     const order = await screen.findByRole("list", { name: "Orden del culto" });
-    await user.click(within(order).getByText("Santo, santo, santo"));
+    await user.click(await within(order).findByText("Santo, santo, santo"));
     const tiles = await screen.findAllByRole("button", { name: /^Diapositiva 1,/ });
     await user.click(tiles[0]!);
     await waitFor(() => expect(backend.state.preview).not.toBeNull());
