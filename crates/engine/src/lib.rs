@@ -64,6 +64,19 @@ impl Clock for ManualClock {
     }
 }
 
+/// Fresh boot epoch: random, non-zero and below 2^53 so it survives a round trip through a JS
+/// `number`. `RandomState` is seeded from the OS per process, so two runs never share one.
+fn new_epoch() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos()),
+    );
+    (h.finish() & ((1 << 53) - 1)).max(1)
+}
+
 /// What an accepted command produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Outcome {
@@ -113,7 +126,14 @@ impl Engine {
 
     /// Like [`Engine::new`] with an explicit broadcast capacity (tests use a tiny one to
     /// exercise lag handling).
-    pub fn with_capacity(state: PresentationState, clock: Arc<dyn Clock>, capacity: usize) -> Self {
+    pub fn with_capacity(
+        mut state: PresentationState,
+        clock: Arc<dyn Clock>,
+        capacity: usize,
+    ) -> Self {
+        if state.epoch == 0 {
+            state.epoch = new_epoch();
+        }
         let (tx, _) = broadcast::channel(capacity);
         Self {
             inner: Mutex::new(Inner {
@@ -267,9 +287,36 @@ mod tests {
         e
     }
 
+    #[test]
+    fn engine_stamps_a_random_nonzero_epoch_per_instance() {
+        let (a, b) = (engine(), engine());
+        let (ea, eb) = (a.view().epoch, b.view().epoch);
+        assert!(ea != 0 && eb != 0);
+        assert!(ea < (1 << 53) && eb < (1 << 53));
+        assert_ne!(ea, eb);
+        // The epoch never changes while the engine lives.
+        a.dispatch(&sid("A"), None, next());
+        assert_eq!(a.view().epoch, ea);
+    }
+
+    #[test]
+    fn stale_epoch_is_rejected_even_when_the_version_matches() {
+        let e = engine();
+        let v = e.view();
+        let cmd: EngineCommand = Command::Next {
+            expected_version: Some(v.version),
+            epoch: Some(v.epoch ^ 1),
+        }
+        .into();
+        let d = e.dispatch(&sid("A"), None, cmd);
+        assert!(matches!(d.result, Err(CoreError::EpochMismatch { .. })));
+        assert_eq!(e.view().version, v.version);
+    }
+
     fn next() -> EngineCommand {
         Command::Next {
             expected_version: None,
+            epoch: None,
         }
         .into()
     }
@@ -301,6 +348,7 @@ mod tests {
         let (s, id) = (sid("A"), CommandId::new("c-9"));
         let stale: EngineCommand = Command::Next {
             expected_version: Some(999),
+            epoch: None,
         }
         .into();
         let first = e.dispatch(&s, Some(&id), stale.clone());

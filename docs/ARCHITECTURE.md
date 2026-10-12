@@ -91,6 +91,9 @@ Reglas del reductor (`crates/core/src/reducer.rs`, PLAN §3.1/§3.4):
 - Los absolutos (`goTo`, `blackout`...) son idempotentes: repetirlos no cambia versión ni emite eventos.
 - Los relativos (`next`, `prev`) llevan `expectedVersion`; si está desfasado -> `version_mismatch`.
   Un doble toque o un reintento nunca salta dos slides.
+  `version` reinicia en 0 en cada arranque, así que también llevan `epoch` (época de arranque aleatoria del `Engine`,
+  presente en `Welcome`, `StateView`/`Snapshot`/`State`): con otra época -> `epoch_mismatch` (se comprueba antes que la
+  versión) y el servidor añade `Resync{epochMismatch}`. Los clientes adoptan el estado y piden snapshot al ver otra época.
 - Cada cambio sube `version` en exactamente 1. El reloj nunca se lee dentro del reductor: el `Engine` estampa `Ctx.now_ms`
   desde su `Clock`. **Ningún cliente envía horas** (`StartTimer`/`PauseTimer` no llevan `atMs`; `SetTimer` ignora el estado
   de ejecución que traiga el cliente).

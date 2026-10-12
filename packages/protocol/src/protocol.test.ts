@@ -28,13 +28,23 @@ describe("mock adapter", () => {
   it("rejects stale relative commands and keeps idempotent toggles quiet", async () => {
     const api = createMockApi();
     await api.dispatch(commands.next());
-    const stale = await api.dispatch(commands.next(0));
+    const stale = await api.dispatch(commands.next({ epoch: api.state.epoch, version: 0 }));
     expect(stale.ok).toBe(false);
     expect(stale.error?.code).toBe("version_mismatch");
     const v = api.state.version;
     await api.dispatch(commands.blackout(true));
     await api.dispatch(commands.blackout(true));
     expect(api.state.version).toBe(v + 1);
+  });
+
+  it("rejects a relative command from another host run even when the version matches", async () => {
+    const api = createMockApi();
+    const { epoch, version } = api.state;
+    const r = await api.dispatch(commands.next({ epoch: epoch + 1, version }));
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("epoch_mismatch");
+    expect(api.state.version).toBe(version);
+    expect((await api.dispatch(commands.next({ epoch, version }))).ok).toBe(true);
   });
 
   it("answers typed queries", async () => {

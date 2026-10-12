@@ -180,14 +180,14 @@ export function CommandPalette({ onClose, onOpenTemplates, onOpenHelp }: Palette
         group: "actions",
         label: t("operator.next"),
         hint: "→",
-        run: () => void op.send(cmd.next(view.version)),
+        run: () => void op.send(cmd.next(view)),
       },
       {
         id: "a:prev",
         group: "actions",
         label: t("operator.prev"),
         hint: "←",
-        run: () => void op.send(cmd.prev(view.version)),
+        run: () => void op.send(cmd.prev(view)),
       },
       {
         id: "a:take",

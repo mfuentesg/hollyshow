@@ -47,10 +47,10 @@ export function useOperatorKeys(op: OperatorCtx, openHelp: () => void) {
       const view = o.p.view;
       switch (a.type) {
         case "next":
-          void o.send(cmd.next(view.version));
+          void o.send(cmd.next(view));
           break;
         case "prev":
-          void o.send(cmd.prev(view.version));
+          void o.send(cmd.prev(view));
           break;
         case "takePreview":
           if (view.preview) void o.send(cmd.takePreview());

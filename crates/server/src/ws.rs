@@ -12,8 +12,8 @@ use crate::util::{now_ms, sanitize_name};
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use hollyshow_app::{AppService, ClientCtx};
 use hollyshow_core::{
-    negotiate, Ack, ClientMsg, Command, CommandId, QueryId, QueryRequest, Role, ServerMsg,
-    SessionId, WireError, CAPABILITIES,
+    negotiate, Ack, ClientMsg, Command, CommandId, QueryId, QueryRequest, ResyncReason, Role,
+    ServerMsg, SessionId, WireError, CAPABILITIES,
 };
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -264,6 +264,7 @@ pub async fn run(shared: Arc<Shared>, ip: IpAddr, mut socket: WebSocket) {
         server_name: shared.config.server_name.clone(),
         heartbeat_ms: u32::try_from(shared.config.heartbeat.as_millis()).unwrap_or(5000),
         capabilities: CAPABILITIES.iter().map(|c| (*c).to_owned()).collect(),
+        epoch: service.engine().with_state(|s| s.epoch),
         now_ms: service.engine().now_ms(),
     };
     if !send(&mut socket, &shared, &welcome).await
@@ -451,7 +452,26 @@ fn throttle_reply(service: &AppService, msg: ClientMsg) -> Vec<ServerMsg> {
 
 async fn handle(service: &Arc<AppService>, ctx: &ClientCtx, msg: ClientMsg) -> Vec<ServerMsg> {
     match msg {
-        ClientMsg::Command { id, cmd } => vec![dispatch(service, ctx, id, cmd).await],
+        ClientMsg::Command { id, cmd } => {
+            let reply = dispatch(service, ctx, id, cmd).await;
+            // The command was issued against another host run: besides the verdict, ask the
+            // client to replace its picture of the state.
+            let stale = matches!(
+                &reply,
+                ServerMsg::Ack { ack, .. }
+                    if ack.error.as_ref().is_some_and(|e| e.code == "epoch_mismatch")
+            );
+            if stale {
+                vec![
+                    reply,
+                    ServerMsg::Resync {
+                        reason: ResyncReason::EpochMismatch,
+                    },
+                ]
+            } else {
+                vec![reply]
+            }
+        }
         ClientMsg::Query { id, query } => vec![run_query(service, ctx, id, query).await],
         ClientMsg::Resync => vec![service.snapshot_msg(ctx.role)],
         ClientMsg::Ping { t } => vec![ServerMsg::Pong { t }],

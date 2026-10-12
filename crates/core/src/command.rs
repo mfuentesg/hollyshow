@@ -24,13 +24,23 @@ use ts_rs::TS;
 pub enum Command {
     // ---- navigation (relative commands carry the version they were issued against) ----
     /// Advance live to the next slide of the show. No-op at the end of the show.
+    ///
+    /// `epoch` is the boot epoch of the host the client last synced with (`Welcome`/`Snapshot`/
+    /// `State`). A host restart restarts `version` at 0, so a stale `expected_version` could match
+    /// by accident; the epoch tells the host the client is talking about a previous run.
     Next {
         #[ts(type = "number | null")]
         expected_version: Option<u64>,
+        #[serde(default)]
+        #[ts(type = "number | null")]
+        epoch: Option<u64>,
     },
     Prev {
         #[ts(type = "number | null")]
         expected_version: Option<u64>,
+        #[serde(default)]
+        #[ts(type = "number | null")]
+        epoch: Option<u64>,
     },
     // ---- absolute commands: safe to repeat ----
     GoTo {
@@ -127,7 +137,7 @@ pub enum Command {
 
 impl Command {
     /// Relative commands are not idempotent by nature and must carry `expected_version`
-    /// when issued by a remote.
+    /// and `epoch` when issued by a remote.
     pub fn is_relative(&self) -> bool {
         matches!(self, Self::Next { .. } | Self::Prev { .. })
     }

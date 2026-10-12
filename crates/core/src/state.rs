@@ -302,6 +302,10 @@ impl ItemClock {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct StateView {
+    /// Boot epoch of the host: random per run, constant while it lives. `version` restarts at 0
+    /// on every run, so `(epoch, version)` is what identifies a state; clients resync on change.
+    #[ts(type = "number")]
+    pub epoch: u64,
     #[ts(type = "number")]
     pub version: u64,
     /// Bumped whenever the show (slide lists) changes; clients resync the snapshot on change.
@@ -357,6 +361,10 @@ impl StateView {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct PresentationState {
+    /// Boot epoch, see [`StateView::epoch`]. `0` means "not stamped yet": the engine assigns a
+    /// random one when it takes ownership of the state.
+    #[ts(type = "number")]
+    pub epoch: u64,
     #[ts(type = "number")]
     pub version: u64,
     #[ts(type = "number")]
@@ -399,6 +407,7 @@ impl Default for PresentationState {
             },
         );
         Self {
+            epoch: 0,
             version: 0,
             show_revision: 0,
             show: vec![],
@@ -423,6 +432,7 @@ impl Default for PresentationState {
 impl PresentationState {
     pub fn view(&self) -> StateView {
         StateView {
+            epoch: self.epoch,
             version: self.version,
             show_revision: self.show_revision,
             live: self.live.clone(),

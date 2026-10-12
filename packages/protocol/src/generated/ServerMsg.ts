@@ -20,6 +20,10 @@ protocol: number, role: Role,
  */
 token: string | null, serverName: string, heartbeatMs: number, capabilities: Array<string>, 
 /**
+ * Boot epoch of the host (see `StateView::epoch`). Relative commands must echo it.
+ */
+epoch: number, 
+/**
  * Server wall clock (epoch ms) at send time; clients derive `offset = now_ms - local`
  * to render timers that agree with the projector.
  */

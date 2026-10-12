@@ -1,9 +1,23 @@
-import type { Command, ItemId, Passage, Target, VersionCode } from "./generated";
+import type { Command, ItemId, Passage, StateView, Target, VersionCode } from "./generated";
+
+/**
+ * What a relative command is issued against: the `(epoch, version)` of the last state seen. The
+ * epoch identifies the host run, because `version` restarts at 0 whenever the app restarts.
+ */
+export type SeenState = Pick<StateView, "epoch" | "version">;
 
 /** Small typed builders so call sites stay terse and typo-proof. */
 export const commands = {
-  next: (expectedVersion: number | null = null): Command => ({ kind: "next", expectedVersion }),
-  prev: (expectedVersion: number | null = null): Command => ({ kind: "prev", expectedVersion }),
+  next: (seen: SeenState | null = null): Command => ({
+    kind: "next",
+    expectedVersion: seen?.version ?? null,
+    epoch: seen?.epoch ?? null,
+  }),
+  prev: (seen: SeenState | null = null): Command => ({
+    kind: "prev",
+    expectedVersion: seen?.version ?? null,
+    epoch: seen?.epoch ?? null,
+  }),
   goTo: (itemId: ItemId, slideIndex: number, target: Target = "live"): Command => ({
     kind: "goTo",
     itemId,

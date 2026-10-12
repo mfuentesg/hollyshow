@@ -32,7 +32,8 @@ export function useLivePresentation(api: HollyApi): LivePresentation | null {
   useEffect(() => {
     let alive = true;
     let revision = -1; // showRevision of the show currently held in state
-    let applied = -1; // highest StateView.version shown so far
+    let applied = -1; // highest StateView.version shown so far (within `epoch`)
+    let epoch = -1; // boot epoch of the host run `applied`/`revision` refer to
     let themes: Theme[] = []; // cached in the window; reloaded only on libraryChanged
     let inFlight = false;
     let again = false;
@@ -65,6 +66,12 @@ export function useLivePresentation(api: HollyApi): LivePresentation | null {
         const snap = await api.getSnapshot();
         if (!alive) return;
         const { show, ...view } = snap;
+        if (view.epoch !== epoch) {
+          // The host restarted: its counters started over, so nothing held is comparable.
+          epoch = view.epoch;
+          applied = -1;
+          revision = -1;
+        }
         const newer = view.version >= applied;
         if (newer) applied = view.version;
         const showFresh = view.showRevision >= revision;
@@ -96,7 +103,9 @@ export function useLivePresentation(api: HollyApi): LivePresentation | null {
       try {
         const snap = await api.getSnapshot();
         if (!alive) return;
-        if (snap.version > applied || snap.showRevision !== revision) void sync();
+        if (snap.epoch !== epoch || snap.version > applied || snap.showRevision !== revision) {
+          void sync();
+        }
       } catch {
         // keep showing the last state; the next tick retries
       }
@@ -115,6 +124,10 @@ export function useLivePresentation(api: HollyApi): LivePresentation | null {
     window.addEventListener("focus", onVisible);
 
     const off = api.subscribe((u) => {
+      if (u.view.epoch !== epoch) {
+        void sync(); // another host run: the snapshot decides
+        return;
+      }
       if (u.view.version < applied) return; // stale, out-of-order delivery
       applied = u.view.version;
       // The live cue lives in the view: show it right away, whatever the show revision.

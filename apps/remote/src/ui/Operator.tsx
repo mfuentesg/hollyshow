@@ -172,14 +172,14 @@ function SlidesTab() {
         <button
           className="big"
           aria-label={t("op.prev")}
-          onClick={() => void send(commands.prev(view.version))}
+          onClick={() => void send(commands.prev(view))}
         >
           <IconLeft size={34} />
         </button>
         <button
           className="big primary"
           aria-label={t("op.next")}
-          onClick={() => void send(commands.next(view.version))}
+          onClick={() => void send(commands.next(view))}
         >
           <IconRight size={34} />
         </button>

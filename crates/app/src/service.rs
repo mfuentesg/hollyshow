@@ -149,15 +149,19 @@ impl AppService {
             && matches!(
                 cmd,
                 Command::Next {
-                    expected_version: None
-                } | Command::Prev {
-                    expected_version: None
-                }
+                    expected_version: None,
+                    ..
+                } | Command::Next { epoch: None, .. }
+                    | Command::Prev {
+                        expected_version: None,
+                        ..
+                    }
+                    | Command::Prev { epoch: None, .. }
             )
         {
             return self.ack_err(
                 &CoreError::Invalid(
-                    "relative commands from remote clients need expectedVersion".into(),
+                    "relative commands from remote clients need expectedVersion and epoch".into(),
                 ),
                 false,
             );
@@ -864,7 +868,8 @@ mod tests {
                     &op(),
                     None,
                     Command::Next {
-                        expected_version: None
+                        expected_version: None,
+                        epoch: None
                     }
                 )
                 .ok
@@ -1028,14 +1033,32 @@ mod tests {
         let id = CommandId::new("c-1");
         let a = ClientCtx::new(SessionId::new("A"), Role::Operator);
         let b = ClientCtx::new(SessionId::new("B"), Role::Operator);
-        let v = f.app.engine().view().version;
+        let view = f.app.engine().view();
         let next = || Command::Next {
-            expected_version: Some(v),
+            expected_version: Some(view.version),
+            epoch: Some(view.epoch),
         };
         let first = f.app.dispatch(&a, Some(&id), next());
         let retry = f.app.dispatch(&a, Some(&id), next());
         let other = f.app.dispatch(&b, Some(&id), next());
         assert!(!first.duplicate && retry.duplicate && !other.duplicate);
+    }
+
+    #[test]
+    fn remote_relative_command_with_stale_epoch_is_refused() {
+        let f = fixture();
+        f.app.set_active_playlist(&"p1".into()).unwrap();
+        let remote = ClientCtx::new(SessionId::new("phone"), Role::Operator);
+        let view = f.app.engine().view();
+        let cmd = |epoch| Command::Next {
+            expected_version: Some(view.version),
+            epoch: Some(epoch),
+        };
+        let ack = f.app.dispatch(&remote, None, cmd(view.epoch ^ 1));
+        assert!(!ack.ok);
+        assert_eq!(ack.error.unwrap().code, "epoch_mismatch");
+        assert_eq!(f.app.engine().view().version, view.version);
+        assert!(f.app.dispatch(&remote, None, cmd(view.epoch)).ok);
     }
 
     #[test]
@@ -1046,9 +1069,11 @@ mod tests {
         for cmd in [
             Command::Next {
                 expected_version: None,
+                epoch: None,
             },
             Command::Prev {
                 expected_version: None,
+                epoch: None,
             },
         ] {
             let ack = f.app.dispatch(&remote, None, cmd.clone());
@@ -1060,6 +1085,7 @@ mod tests {
             None,
             Command::Next {
                 expected_version: None,
+                epoch: None,
             },
         );
         assert_ne!(ack.error.map(|e| e.code), Some("invalid".to_string()));

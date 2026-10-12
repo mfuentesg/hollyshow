@@ -41,6 +41,7 @@ export function sampleShow(): ShowEntry[] {
 
 export function emptyState(): PresentationState {
   return {
+    epoch: 1,
     version: 0,
     showRevision: 0,
     show: [],

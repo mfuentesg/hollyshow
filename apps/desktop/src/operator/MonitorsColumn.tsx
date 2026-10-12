@@ -102,7 +102,7 @@ export function MonitorsColumn() {
       </div>
 
       <div className="row gap-8">
-        <Button style={{ flex: 1 }} onClick={() => void send(cmd.prev(view.version))} title="←">
+        <Button style={{ flex: 1 }} onClick={() => void send(cmd.prev(view))} title="←">
           ◀ {t("operator.prev")}
         </Button>
         <Button
@@ -116,7 +116,7 @@ export function MonitorsColumn() {
         <Button
           variant="primary"
           style={{ flex: 1 }}
-          onClick={() => void send(cmd.next(view.version))}
+          onClick={() => void send(cmd.next(view))}
           title="→ / Space"
         >
           {t("operator.next")} ▶

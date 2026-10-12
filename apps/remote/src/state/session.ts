@@ -109,6 +109,17 @@ export function reduceServerMsg(s: SessionState, msg: ServerMsg, localNow: numbe
       if (s.phase !== "ready" || !s.view) return { state: s, effects: [] };
       const prev = s.view;
       const clockOffset = msg.nowMs - localNow;
+      if (msg.view.epoch !== prev.epoch) {
+        // The host restarted: its version counter started over, so versions are not comparable.
+        // Adopt the view and fetch an authoritative snapshot.
+        return {
+          state: { ...s, view: msg.view, clockOffset, resyncPending: true },
+          effects: [
+            { type: "update", version: msg.view.version, view: msg.view, events: [] },
+            ...(s.resyncPending ? [] : [{ type: "resync" } as const]),
+          ],
+        };
+      }
       if (msg.view.version < prev.version) {
         // Late duplicate (the feed is created before the snapshot).
         return { state: s, effects: [] };

@@ -21,6 +21,7 @@ const welcome: ServerMsg = {
   serverName: "iglesia-pc",
   heartbeatMs: 5000,
   capabilities: [],
+  epoch: 1,
   nowMs: 10_000,
 };
 const snapshot = (v: StateView, show: RoleSnapshot["show"] = []): ServerMsg => ({
@@ -45,6 +46,22 @@ describe("reduceServerMsg", () => {
       clockOffset: 1_000,
     });
     expect(r.effects).toEqual([{ type: "welcome", token: "tok" }]);
+  });
+
+  it("a state from another host epoch is adopted and triggers a resync, not a version compare", () => {
+    // Same version as before the restart would otherwise look like a duplicate.
+    const restarted = { ...view(5), epoch: 2 };
+    const r = reduceServerMsg(ready(5), { type: "state", view: restarted, nowMs: 0 }, 0);
+    expect(r.state.view?.epoch).toBe(2);
+    expect(r.state.resyncPending).toBe(true);
+    expect(r.effects.map((e) => e.type)).toEqual(["update", "resync"]);
+    // A lower version after a restart is not a "late duplicate" either.
+    const low = reduceServerMsg(
+      ready(50),
+      { type: "state", view: { ...view(1), epoch: 2 }, nowMs: 0 },
+      0,
+    );
+    expect(low.effects.map((e) => e.type)).toEqual(["update", "resync"]);
   });
 
   it("snapshot makes the session ready and notifies", () => {

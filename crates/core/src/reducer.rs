@@ -83,14 +83,20 @@ pub fn apply(
     };
 
     match cmd {
-        Command::Next { expected_version } => {
-            check_version(state, expected_version)?;
+        Command::Next {
+            expected_version,
+            epoch,
+        } => {
+            check_version(state, expected_version, epoch)?;
             if let Some(pos) = next_target(state) {
                 go_live(&mut next, &mut events, pos);
             }
         }
-        Command::Prev { expected_version } => {
-            check_version(state, expected_version)?;
+        Command::Prev {
+            expected_version,
+            epoch,
+        } => {
+            check_version(state, expected_version, epoch)?;
             if let Some(pos) = state.position_before(state.live_position()) {
                 go_live(&mut next, &mut events, pos);
             }
@@ -421,7 +427,19 @@ fn finish(
     Ok((next, events))
 }
 
-fn check_version(state: &PresentationState, expected: Option<u64>) -> Result<(), CoreError> {
+/// The epoch is checked first: a version from another boot is meaningless, so it must never be
+/// compared with this boot's counter.
+fn check_version(
+    state: &PresentationState,
+    expected: Option<u64>,
+    epoch: Option<u64>,
+) -> Result<(), CoreError> {
+    if let Some(e) = epoch.filter(|e| *e != state.epoch) {
+        return Err(CoreError::EpochMismatch {
+            expected: e,
+            actual: state.epoch,
+        });
+    }
     match expected {
         Some(e) if e != state.version => Err(CoreError::VersionMismatch {
             expected: e,
@@ -552,6 +570,7 @@ mod tests {
     fn next(v: Option<u64>) -> Command {
         Command::Next {
             expected_version: v,
+            epoch: None,
         }
     }
 
@@ -594,6 +613,7 @@ mod tests {
             &s,
             Command::Prev {
                 expected_version: None,
+                epoch: None,
             },
         );
         assert_eq!(s.live.as_ref().unwrap().slide.id.as_str(), "a:1");
@@ -601,15 +621,53 @@ mod tests {
             &s,
             Command::Prev {
                 expected_version: None,
+                epoch: None,
             },
         );
         s = run(
             &s,
             Command::Prev {
                 expected_version: None,
+                epoch: None,
             },
         );
         assert_eq!(s.live.as_ref().unwrap().slide.id.as_str(), "a:0");
+    }
+
+    #[test]
+    fn epoch_mismatch_is_rejected_before_the_version_is_compared() {
+        let mut s = run(&loaded(), next(None));
+        s.epoch = 42;
+        // The version matches by accident (the restart scenario), the epoch does not.
+        for forward in [true, false] {
+            let cmd = if forward {
+                Command::Next {
+                    expected_version: Some(s.version),
+                    epoch: Some(7),
+                }
+            } else {
+                Command::Prev {
+                    expected_version: Some(s.version),
+                    epoch: Some(7),
+                }
+            };
+            let err = apply(&s, cmd).unwrap_err();
+            assert_eq!(
+                err,
+                CoreError::EpochMismatch {
+                    expected: 7,
+                    actual: 42
+                }
+            );
+            assert_eq!(err.code(), "epoch_mismatch");
+        }
+        let ok = Command::Next {
+            expected_version: Some(s.version),
+            epoch: Some(42),
+        };
+        assert!(apply(&s, ok).is_ok());
+        // A local caller that sends no epoch is not checked.
+        assert!(apply(&s, next(Some(s.version))).is_ok());
     }
 
     #[test]
@@ -1488,7 +1546,7 @@ mod tests {
                     let c = if forward {
                         next(Some(v))
                     } else {
-                        Command::Prev { expected_version: Some(v) }
+                        Command::Prev { expected_version: Some(v), epoch: None }
                     };
                     if let Ok((n, _)) = apply(&s, c) { s = n; ok += 1; }
                 }
@@ -1506,7 +1564,7 @@ mod tests {
                     now += 700;
                     let cmd = match op {
                         0..=2 => next(None),
-                        3 => Command::Prev { expected_version: None },
+                        3 => Command::Prev { expected_version: None, epoch: None },
                         4 => Command::Blackout { on: op % 2 == 0 },
                         5 => Command::Clear { on: true },
                         6 => Command::Logo { on: true },

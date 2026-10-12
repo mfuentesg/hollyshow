@@ -10,6 +10,10 @@ use ts_rs::TS;
 pub enum CoreError {
     #[error("version mismatch: command expected {expected}, state is at {actual}")]
     VersionMismatch { expected: u64, actual: u64 },
+    #[error(
+        "epoch mismatch: command was issued against boot epoch {expected}, host is at {actual}"
+    )]
+    EpochMismatch { expected: u64, actual: u64 },
     #[error("unknown item {0}")]
     UnknownItem(ItemId),
     #[error("slide {slide_index} out of range for item {item_id} ({slide_count} slides)")]
@@ -43,6 +47,7 @@ impl CoreError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::VersionMismatch { .. } => "version_mismatch",
+            Self::EpochMismatch { .. } => "epoch_mismatch",
             Self::UnknownItem(_) => "unknown_item",
             Self::SlideOutOfRange { .. } => "slide_out_of_range",
             Self::NothingInPreview => "nothing_in_preview",

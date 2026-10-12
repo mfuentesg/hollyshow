@@ -49,6 +49,7 @@ const welcome = (over: Partial<Extract<ServerMsg, { type: "welcome" }>> = {}): S
   serverName: "iglesia-pc",
   heartbeatMs: 5000,
   capabilities: [],
+  epoch: 1,
   nowMs: 1_000_000,
   ...over,
 });
@@ -201,7 +202,7 @@ describe("commands and queries", () => {
   it("fails pending commands when the socket drops (never replays them)", async () => {
     const c = make();
     connectReady(c);
-    const p = c.client.dispatch({ kind: "next", expectedVersion: 1 });
+    const p = c.client.dispatch({ kind: "next", expectedVersion: 1, epoch: 1 });
     const assertion = expect(p).rejects.toMatchObject({ code: "disconnected" });
     c.sock().drop();
     await assertion;

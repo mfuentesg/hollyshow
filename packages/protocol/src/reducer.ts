@@ -69,6 +69,9 @@ export function mockApply(state: PresentationState, cmd: Command): MockResult {
   switch (cmd.kind) {
     case "next":
     case "prev": {
+      if (cmd.epoch !== null && cmd.epoch !== state.epoch) {
+        return fail("epoch_mismatch", `epoch ${cmd.epoch}, host is at ${state.epoch}`);
+      }
       if (cmd.expectedVersion !== null && cmd.expectedVersion !== state.version) {
         return fail("version_mismatch", `expected ${cmd.expectedVersion}, at ${state.version}`);
       }

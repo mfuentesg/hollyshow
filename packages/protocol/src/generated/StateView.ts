@@ -10,7 +10,12 @@ import type { Timer } from "./Timer";
 /**
  * Everything that changes at 60 Hz of human speed: small, cheap to broadcast to every client.
  */
-export type StateView = { version: number, 
+export type StateView = { 
+/**
+ * Boot epoch of the host: random per run, constant while it lives. `version` restarts at 0
+ * on every run, so `(epoch, version)` is what identifies a state; clients resync on change.
+ */
+epoch: number, version: number, 
 /**
  * Bumped whenever the show (slide lists) changes; clients resync the snapshot on change.
  */

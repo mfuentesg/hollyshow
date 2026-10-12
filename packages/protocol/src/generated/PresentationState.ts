@@ -11,4 +11,9 @@ import type { Timer } from "./Timer";
 /**
  * Full authoritative state, including the expanded show.
  */
-export type PresentationState = { version: number, showRevision: number, show: Array<ShowEntry>, live: Cue | null, preview: Cue | null, blackout: boolean, clear: boolean, logo: boolean, stageMessage: StageMessage | null, timers: Array<Timer>, outputs: { [key in OutputId]: OutputLook }, outputLayers: { [key in OutputId]: OutputLayers }, itemClock: ItemClock | null, serviceMode: boolean, };
+export type PresentationState = { 
+/**
+ * Boot epoch, see [`StateView::epoch`]. `0` means "not stamped yet": the engine assigns a
+ * random one when it takes ownership of the state.
+ */
+epoch: number, version: number, showRevision: number, show: Array<ShowEntry>, live: Cue | null, preview: Cue | null, blackout: boolean, clear: boolean, logo: boolean, stageMessage: StageMessage | null, timers: Array<Timer>, outputs: { [key in OutputId]: OutputLook }, outputLayers: { [key in OutputId]: OutputLayers }, itemClock: ItemClock | null, serviceMode: boolean, };

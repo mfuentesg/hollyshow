@@ -267,6 +267,9 @@ pub enum ServerMsg {
         server_name: String,
         heartbeat_ms: u32,
         capabilities: Vec<String>,
+        /// Boot epoch of the host (see `StateView::epoch`). Relative commands must echo it.
+        #[ts(type = "number")]
+        epoch: u64,
         /// Server wall clock (epoch ms) at send time; clients derive `offset = now_ms - local`
         /// to render timers that agree with the projector.
         #[ts(type = "number")]
@@ -319,6 +322,9 @@ pub enum ServerMsg {
 pub enum ResyncReason {
     /// The client's receive queue overflowed and updates were dropped.
     Lagged,
+    /// A relative command carried the epoch of a previous host run; the client's picture of the
+    /// state is from before a restart and must be replaced by a fresh `Snapshot`.
+    EpochMismatch,
 }
 
 /// A physical display as reported by the desktop shell, for the "choose output screen" dialog.
@@ -400,16 +406,21 @@ mod tests {
     #[test]
     fn command_wire_shape_matches_plan() {
         let c: ClientMsg = serde_json::from_value(json!({
-            "type": "command", "id": "c-123", "cmd": { "kind": "next", "expectedVersion": 418 }
+            "type": "command", "id": "c-123", "cmd": { "kind": "next", "expectedVersion": 418, "epoch": 77 }
         }))
         .unwrap();
         match c {
             ClientMsg::Command {
                 id,
-                cmd: Command::Next { expected_version },
+                cmd:
+                    Command::Next {
+                        expected_version,
+                        epoch,
+                    },
             } => {
                 assert_eq!(id.as_str(), "c-123");
                 assert_eq!(expected_version, Some(418));
+                assert_eq!(epoch, Some(77));
             }
             other => panic!("unexpected {other:?}"),
         }
@@ -601,7 +612,8 @@ mod tests {
     fn pastor_may_only_show_bible() {
         assert!(!Role::Pastor.can_dispatch(&Command::Blackout { on: true }));
         assert!(!Role::Congregation.can_dispatch(&Command::Next {
-            expected_version: None
+            expected_version: None,
+            epoch: None
         }));
         assert!(Role::Operator.can_dispatch(&Command::Blackout { on: true }));
         assert!(Role::Pastor.can_query(&QueryRequest::ListBibleVersions));
