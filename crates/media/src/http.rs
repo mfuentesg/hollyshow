@@ -179,6 +179,10 @@ impl ReqwestFetcher {
                 }
             }))
             .dns_resolver(PublicOnlyResolver)
+            // A proxy resolves hostnames itself, which would skip `PublicOnlyResolver` and
+            // let a public-looking name with a private A record reach the LAN. Always connect
+            // directly, ignoring HTTP(S)_PROXY / ALL_PROXY from the environment.
+            .no_proxy()
             .build()
             .map_err(|e| MediaError::Network(e.to_string()))?;
         Ok(Self { client, trusted })
@@ -383,6 +387,28 @@ mod tests {
             max_bytes,
             accept_types: IMAGE_TYPES,
         }
+    }
+
+    #[tokio::test]
+    async fn ignores_system_proxy_so_dns_checks_always_apply() {
+        let proxy = serve(vec![image_ok(b"VIA-PROXY")]).await;
+        let origin = serve(vec![image_ok(b"DIRECT")]).await;
+        let url = format!("http://127.0.0.1:{}", proxy.port);
+        // Env is process-global; only this test sets these, and the fetcher snapshots them
+        // at build time.
+        for k in ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"] {
+            std::env::set_var(k, &url);
+        }
+        for k in ["NO_PROXY", "no_proxy"] {
+            std::env::remove_var(k);
+        }
+        let fetcher = fetcher_for(&origin);
+        let r = fetcher.get(&req(&origin, 1024)).await.unwrap();
+        for k in ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"] {
+            std::env::remove_var(k);
+        }
+        assert_eq!(r.body.as_slice(), b"DIRECT");
+        assert_eq!(proxy.hits.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
