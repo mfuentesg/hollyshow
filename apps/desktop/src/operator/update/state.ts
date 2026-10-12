@@ -43,3 +43,11 @@ export function releaseOf(s: UpdateState): ReleaseInfo | null {
   }
   return null;
 }
+
+/** Public repository that publishes the releases (see `tauri.conf.json` updater endpoint). */
+export const RELEASES_URL = "https://github.com/mfuentesg/hollyshow/releases";
+
+/** GitHub release page of a version; tags are `v<version>` (enforced by `scripts/check-version.mjs`). */
+export function releaseUrl(version: string): string {
+  return `${RELEASES_URL}/tag/v${encodeURIComponent(version.replace(/^v/, ""))}`;
+}

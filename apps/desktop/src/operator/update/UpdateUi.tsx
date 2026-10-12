@@ -1,8 +1,9 @@
 import { Button, Field, Modal, Select, SwitchRow } from "@hollyshow/ui";
 import { useTranslation } from "react-i18next";
+import { ExternalLink } from "../ExternalLink";
 import { Markdown } from "./markdown";
 import { UPDATE_NS } from "./i18n";
-import { percent, releaseOf } from "./state";
+import { percent, releaseOf, releaseUrl } from "./state";
 import { useUpdate } from "./UpdateContext";
 import type { UpdateChannel } from "./types";
 
@@ -88,6 +89,9 @@ export function ReleaseNotesModal() {
       width={640}
       footer={
         <>
+          <span className="upd-release-link">
+            <ExternalLink href={releaseUrl(rel.version)}>{t("viewOnGithub")}</ExternalLink>
+          </span>
           {state.state === "ready" && !busy && (
             <Button
               variant="primary"

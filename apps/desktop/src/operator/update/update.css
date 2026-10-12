@@ -91,3 +91,8 @@
 .md a {
   color: var(--hs-preview-text);
 }
+
+.upd-release-link {
+  margin-right: auto;
+  align-self: center;
+}

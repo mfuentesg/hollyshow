@@ -2,7 +2,7 @@ import "./update.css";
 import "./i18n";
 
 export { Markdown, parseBlocks, renderInline } from "./markdown";
-export { applyEvent, percent, releaseOf } from "./state";
+export { applyEvent, percent, releaseOf, releaseUrl, RELEASES_URL } from "./state";
 export * from "./types";
 export { UpdateProvider, useUpdate, type UpdateCtx } from "./UpdateContext";
 export {

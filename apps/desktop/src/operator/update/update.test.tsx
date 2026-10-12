@@ -1,10 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "../../i18n";
 import { ToastProvider } from "../../hooks/useToasts";
 import { Markdown, parseBlocks } from "./markdown";
-import { applyEvent, percent } from "./state";
+import { applyEvent, percent, releaseUrl } from "./state";
 import type { ReleaseInfo, UpdateState } from "./types";
 import { UpdateProvider } from "./UpdateContext";
 import { UpdateFooterIndicator, UpdateOverlay, UpdateSettings } from "./UpdateUi";
@@ -106,6 +106,19 @@ describe("update UI", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Mejor rendimiento");
     expect(dialog.querySelector('a[href="https://example.com/x"]')).not.toBeNull();
+    const gh = within(dialog).getByRole("link", { name: "Ver en GitHub" });
+    expect(gh).toHaveAttribute(
+      "href",
+      "https://github.com/mfuentesg/hollyshow/releases/tag/v0.2.0",
+    );
+    expect(gh).toHaveAttribute("target", "_blank");
+  });
+
+  it("builds the release page URL from the version", () => {
+    expect(releaseUrl("0.2.0")).toBe("https://github.com/mfuentesg/hollyshow/releases/tag/v0.2.0");
+    expect(releaseUrl("v1.0.0-beta.1")).toBe(
+      "https://github.com/mfuentesg/hollyshow/releases/tag/v1.0.0-beta.1",
+    );
   });
 
   it("'Más tarde' hides the banner but the footer keeps the pending update", async () => {

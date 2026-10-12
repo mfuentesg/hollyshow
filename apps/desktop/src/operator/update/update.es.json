@@ -22,6 +22,7 @@
   "notesTitle": "Novedades de HollyShow {{version}}",
   "notesDate": "Publicada el {{date}}",
   "notesEmpty": "Esta versión no incluye notas.",
+  "viewOnGithub": "Ver en GitHub",
   "close": "Cerrar",
   "settings": {
     "autoCheck": "Buscar actualizaciones automáticamente",
