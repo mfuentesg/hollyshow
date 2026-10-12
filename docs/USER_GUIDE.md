@@ -27,7 +27,19 @@ HollyShow proyecta letras, versículos y medios durante el culto, y se controla 
 1. Conecta el computador y el celular a la **misma red Wi-Fi**.
 2. En HollyShow abre Remoto > «Emparejar dispositivo» y elige el rol (operador, pastor, músico o congregación).
 3. Escanea el código QR con la cámara del celular: se abre la página del remoto en el navegador. No hay que instalar nada.
-4. El código es de un solo uso y caduca; genera otro para cada dispositivo. Puedes revocar dispositivos desde la misma pantalla.
+4. Cada PIN y cada QR **sirve una sola vez** (el primer celular que se empareje lo consume, por PIN o por QR) y **caduca a los 2 minutos** (puedes cambiarlo entre 1 y 10 minutos en Ajustes > Remoto > «Validez del PIN y del QR»). La pantalla muestra la cuenta atrás y el botón **«Generar nuevo»**; genera un código para cada dispositivo.
+5. Si un dispositivo falla 5 veces el PIN, queda **bloqueado 5 minutos** (aunque luego acierte). Espera o empareja desde otro celular.
+6. Puedes revocar dispositivos desde la misma pantalla.
+
+### HTTPS opcional (conexión cifrada)
+
+Por defecto el remoto usa HTTP sin cifrar, adecuado solo para una red Wi-Fi de confianza. En Ajustes > Remoto puedes activar **«Usar HTTPS (certificado autofirmado)»**:
+
+- HollyShow genera un certificado propio la primera vez (válido para `hollyshow.local` y las direcciones de tu red) y lo guarda en la carpeta de datos de la aplicación. Si cambian las direcciones del computador (otro Wi-Fi, otra IP), lo regenera solo; en ese caso la huella cambia y el celular volverá a avisar.
+- El HTTP normal se redirige a HTTPS por el mismo puerto: los QR y enlaces antiguos siguen funcionando.
+- **Aviso único en el celular:** como el certificado lo firma HollyShow y no una autoridad pública, el navegador mostrará la primera vez «La conexión no es privada» (Chrome/Android) o «Esta conexión no es privada» (Safari/iPhone). Es normal. Antes de continuar, compara la **huella SHA-256** que muestra HollyShow (en Ajustes > Remoto y junto al QR) con la del certificado en el navegador (candado o «Ver certificado»); si coinciden, pulsa «Configuración avanzada» > «Continuar» (Chrome) o «Mostrar detalles» > «visitar este sitio web» (Safari). No volverá a preguntar mientras el certificado no cambie.
+- **Por qué conviene:** los navegadores solo permiten ciertas funciones en «contextos seguros» (HTTPS). Con HTTPS el celular puede **mantener la pantalla encendida** mientras sigues el culto (Wake Lock) e **instalar el remoto como aplicación (PWA)** en la pantalla de inicio. Con HTTP esas funciones no están disponibles. Además, el PIN, el token de sesión y el contenido ya no viajan en claro por el Wi-Fi.
+- Si el aviso se repite cada vez, borra el sitio guardado del navegador o vuelve a aceptar el certificado tras comprobar la huella.
 
 ## 5. Avisos del firewall
 
@@ -44,6 +56,8 @@ HollyShow proyecta letras, versículos y medios durante el culto, y se controla 
 - Redes de invitados y de empresa suelen bloquear la comunicación entre dispositivos; usa una red privada.
 - Las VPN activas en el computador o el celular pueden desviar el tráfico: desactívalas.
 - Si cambió la IP del computador, vuelve a escanear el QR.
+- «PIN incorrecto, caducado o ya usado»: cada código sirve una sola vez y dura pocos minutos; pulsa «Generar nuevo» en HollyShow.
+- «Bloqueado 5 minutos»: ese celular falló el PIN 5 veces; espera o usa otro dispositivo.
 
 **La salida se ve en la pantalla equivocada o con otra resolución:** revisa Ajustes > Salidas y la configuración de pantallas del sistema (extendida, no duplicada).
 

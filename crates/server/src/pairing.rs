@@ -1,21 +1,26 @@
-//! Pairing: a 6-digit PIN and a one-time QR token, both redeemed for a session token.
+//! Pairing: a 6-digit PIN and a QR token, both redeemed for a session token.
 //!
-//! The host creates an *offer* for a role. The PIN can be typed on a phone and works for a few
-//! devices before it is spent; the QR token works once. Both expire. Guessing is throttled three
-//! ways: a per-address lockout, a global lockout that stops a botnet-style sweep of the 10^6 PIN
+//! The host creates an *offer* for a role. An offer is **one-time use**: the first successful
+//! redemption, by PIN or by QR token, consumes the whole offer (the other credential stops
+//! working too), so a code that leaked over someone's shoulder or in a photo of the screen is
+//! worthless once the intended phone has paired. Offers also expire (2 minutes by default).
+//! Guessing is throttled three ways: a per-address lockout (5 wrong credentials lock that
+//! address for 5 minutes), a global lockout that stops a botnet-style sweep of the 10^6 PIN
 //! space, and the short life of offers.
 
 use crate::util::{ct_eq, random_below, random_hex};
 use hollyshow_core::Role;
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const GLOBAL_WINDOW: Duration = Duration::from_secs(60);
 const GLOBAL_MAX_FAILURES: u32 = 30;
 const GLOBAL_LOCK: Duration = Duration::from_secs(60);
-const IP_WINDOW: Duration = Duration::from_secs(60);
+/// Wrong credentials from one address only count together inside this window.
+const IP_WINDOW: Duration = Duration::from_secs(5 * 60);
 const MAX_OFFERS: usize = 16;
 
 #[derive(Debug, Clone, Copy)]
@@ -48,8 +53,6 @@ struct Stored {
     pin: String,
     token: String,
     expires: Instant,
-    pin_uses_left: u32,
-    token_used: bool,
 }
 
 #[derive(Default)]
@@ -68,26 +71,29 @@ struct Inner {
 
 pub struct Pairing {
     inner: Mutex<Inner>,
-    ttl: Duration,
-    pin_max_uses: u32,
+    /// Milliseconds; adjustable while running (the offers already made keep their deadline).
+    ttl_ms: AtomicU64,
     max_failures_per_ip: u32,
     lockout: Duration,
 }
 
 impl Pairing {
-    pub fn new(
-        ttl: Duration,
-        pin_max_uses: u32,
-        max_failures_per_ip: u32,
-        lockout: Duration,
-    ) -> Self {
+    pub fn new(ttl: Duration, max_failures_per_ip: u32, lockout: Duration) -> Self {
         Self {
             inner: Mutex::new(Inner::default()),
-            ttl,
-            pin_max_uses: pin_max_uses.max(1),
+            ttl_ms: AtomicU64::new(millis(ttl)),
             max_failures_per_ip: max_failures_per_ip.max(1),
             lockout,
         }
+    }
+
+    /// Lifetime of offers created from now on.
+    pub fn set_ttl(&self, ttl: Duration) {
+        self.ttl_ms.store(millis(ttl), Ordering::Relaxed);
+    }
+
+    pub fn ttl(&self) -> Duration {
+        Duration::from_millis(self.ttl_ms.load(Ordering::Relaxed))
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -99,10 +105,9 @@ impl Pairing {
     }
 
     pub fn create_offer_at(&self, role: Role, now: Instant) -> Result<Offer, PairError> {
+        let ttl = self.ttl();
         let mut inner = self.lock();
-        inner
-            .offers
-            .retain(|o| o.expires > now && (o.pin_uses_left > 0 || !o.token_used));
+        inner.offers.retain(|o| o.expires > now);
         // Bounded: the oldest offers go first, so a stuck "new code" button cannot grow memory.
         while inner.offers.len() >= MAX_OFFERS {
             inner.offers.remove(0);
@@ -126,21 +131,32 @@ impl Pairing {
             role,
             pin: pin.clone(),
             token: token.clone(),
-            expires: now + self.ttl,
-            pin_uses_left: self.pin_max_uses,
-            token_used: false,
+            expires: now + ttl,
         });
         Ok(Offer {
             pin,
             token,
             role,
-            expires_in: self.ttl,
+            expires_in: ttl,
         })
     }
 
     /// Invalidates every open offer (the operator pressed "cancel", or the app is locked down).
     pub fn clear_offers(&self) {
         self.lock().offers.clear();
+    }
+
+    /// Whether the offer with this QR token can still be redeemed (not spent, not expired).
+    /// The host uses it to replace the code on screen as soon as a phone has used it.
+    pub fn is_live(&self, token: &str) -> bool {
+        self.is_live_at(token, Instant::now())
+    }
+
+    pub fn is_live_at(&self, token: &str, now: Instant) -> bool {
+        self.lock()
+            .offers
+            .iter()
+            .any(|o| o.expires > now && ct_eq(&o.token, token))
     }
 
     pub fn redeem(&self, cred: Credential<'_>, ip: IpAddr) -> Result<Role, PairError> {
@@ -163,20 +179,14 @@ impl Pairing {
         }
         inner.offers.retain(|o| o.expires > now);
 
-        let hit = inner.offers.iter_mut().find(|o| match cred {
-            Credential::Pin(p) => o.pin_uses_left > 0 && ct_eq(&o.pin, p.trim()),
-            Credential::Token(t) => !o.token_used && ct_eq(&o.token, t.trim()),
+        let hit = inner.offers.iter().position(|o| match cred {
+            Credential::Pin(p) => ct_eq(&o.pin, p.trim()),
+            Credential::Token(t) => ct_eq(&o.token, t.trim()),
         });
-        if let Some(offer) = hit {
-            match cred {
-                Credential::Pin(_) => offer.pin_uses_left -= 1,
-                Credential::Token(_) => offer.token_used = true,
-            }
-            let role = offer.role;
+        if let Some(i) = hit {
+            // One-time use: the offer is gone for both the PIN and the QR token.
+            let role = inner.offers.remove(i).role;
             inner.per_ip.remove(&ip);
-            inner
-                .offers
-                .retain(|o| o.pin_uses_left > 0 || !o.token_used);
             return Ok(role);
         }
 
@@ -206,6 +216,10 @@ impl Pairing {
     }
 }
 
+fn millis(d: Duration) -> u64 {
+    u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
+}
+
 fn locked(f: Option<&Failures>, now: Instant) -> Option<Duration> {
     f.and_then(|f| f.locked_until)
         .filter(|u| *u > now)
@@ -232,42 +246,72 @@ mod tests {
     use super::*;
 
     fn pairing() -> Pairing {
-        Pairing::new(Duration::from_secs(600), 2, 3, Duration::from_secs(300))
+        Pairing::new(Duration::from_secs(120), 5, Duration::from_secs(300))
     }
     fn ip(n: u8) -> IpAddr {
         IpAddr::from([192, 168, 1, n])
     }
+    fn wrong_pin(o: &Offer) -> &'static str {
+        if o.pin == "000000" {
+            "000001"
+        } else {
+            "000000"
+        }
+    }
 
     #[test]
-    fn pin_is_six_digits_and_works_a_limited_number_of_times() {
+    fn pin_is_six_digits_and_works_exactly_once() {
         let p = pairing();
         let o = p.create_offer(Role::Musician).unwrap();
         assert_eq!(o.pin.len(), 6);
         assert!(o.pin.chars().all(|c| c.is_ascii_digit()));
-        assert_eq!(p.redeem(Credential::Pin(&o.pin), ip(1)), Ok(Role::Musician));
         assert_eq!(
-            p.redeem(Credential::Pin(&format!(" {} ", o.pin)), ip(2)),
+            p.redeem(Credential::Pin(&format!(" {} ", o.pin)), ip(1)),
             Ok(Role::Musician)
         );
         assert_eq!(
-            p.redeem(Credential::Pin(&o.pin), ip(3)),
+            p.redeem(Credential::Pin(&o.pin), ip(2)),
             Err(PairError::Invalid)
         );
     }
 
     #[test]
-    fn qr_token_is_one_time_and_independent_of_the_pin() {
+    fn qr_token_is_one_time_and_spends_the_pin_too() {
         let p = pairing();
         let o = p.create_offer(Role::Pastor).unwrap();
+        assert!(p.is_live(&o.token));
         assert_eq!(
             p.redeem(Credential::Token(&o.token), ip(1)),
             Ok(Role::Pastor)
         );
+        assert!(!p.is_live(&o.token));
         assert_eq!(
             p.redeem(Credential::Token(&o.token), ip(1)),
             Err(PairError::Invalid)
         );
-        assert_eq!(p.redeem(Credential::Pin(&o.pin), ip(1)), Ok(Role::Pastor));
+        assert_eq!(
+            p.redeem(Credential::Pin(&o.pin), ip(1)),
+            Err(PairError::Invalid)
+        );
+    }
+
+    #[test]
+    fn redeeming_one_offer_leaves_the_others_alone() {
+        let p = pairing();
+        let a = p.create_offer(Role::Stage).unwrap();
+        let b = p.create_offer(Role::Operator).unwrap();
+        assert_eq!(p.redeem(Credential::Pin(&a.pin), ip(1)), Ok(Role::Stage));
+        assert_eq!(p.redeem(Credential::Pin(&b.pin), ip(1)), Ok(Role::Operator));
+    }
+
+    #[test]
+    fn the_lifetime_can_change_for_new_offers() {
+        let p = pairing();
+        let old = p.create_offer(Role::Stage).unwrap();
+        p.set_ttl(Duration::from_secs(600));
+        let new = p.create_offer(Role::Stage).unwrap();
+        assert_eq!(old.expires_in, Duration::from_secs(120));
+        assert_eq!(new.expires_in, Duration::from_secs(600));
     }
 
     #[test]
@@ -275,60 +319,78 @@ mod tests {
         let p = pairing();
         let t0 = Instant::now();
         let o = p.create_offer_at(Role::Operator, t0).unwrap();
-        let late = t0 + Duration::from_secs(601);
+        assert_eq!(o.expires_in, Duration::from_secs(120));
+        assert!(p.is_live_at(&o.token, t0 + Duration::from_secs(119)));
+        let late = t0 + Duration::from_secs(121);
+        assert!(!p.is_live_at(&o.token, late));
         assert_eq!(
             p.redeem_at(Credential::Pin(&o.pin), ip(1), late),
+            Err(PairError::Invalid)
+        );
+        assert_eq!(
+            p.redeem_at(Credential::Token(&o.token), ip(1), late),
             Err(PairError::Invalid)
         );
     }
 
     #[test]
-    fn an_address_is_locked_out_after_repeated_failures() {
+    fn an_address_is_locked_out_after_five_wrong_pins_for_five_minutes() {
         let p = pairing();
         let t0 = Instant::now();
         let o = p.create_offer_at(Role::Operator, t0).unwrap();
-        let wrong = if o.pin == "000000" {
-            "000001"
-        } else {
-            "000000"
-        };
-        for _ in 0..3 {
+        for i in 0..5 {
             assert_eq!(
-                p.redeem_at(Credential::Pin(wrong), ip(9), t0),
+                p.redeem_at(
+                    Credential::Pin(wrong_pin(&o)),
+                    ip(9),
+                    t0 + Duration::from_secs(i)
+                ),
                 Err(PairError::Invalid)
             );
         }
-        // Even the right PIN is refused while locked...
+        // Even the right PIN is refused while locked, and the offer is not spent by it...
+        let still = t0 + Duration::from_secs(60);
         assert!(matches!(
-            p.redeem_at(Credential::Pin(&o.pin), ip(9), t0),
-            Err(PairError::Locked { .. })
+            p.redeem_at(Credential::Pin(&o.pin), ip(9), still),
+            Err(PairError::Locked { retry_secs }) if (200..=300).contains(&retry_secs)
         ));
-        // ...other addresses are unaffected, and the lock ends.
+        // ...other addresses are unaffected...
+        let o2 = p.create_offer_at(Role::Operator, still).unwrap();
         assert_eq!(
-            p.redeem_at(Credential::Pin(&o.pin), ip(10), t0),
+            p.redeem_at(Credential::Pin(&o2.pin), ip(10), still),
             Ok(Role::Operator)
         );
-        let o2 = p.create_offer_at(Role::Operator, t0).unwrap();
-        let after = t0 + Duration::from_secs(301);
+        // ...and the lock ends after 5 minutes.
+        let after = t0 + Duration::from_secs(4 + 301);
+        let fresh = p.create_offer_at(Role::Operator, after).unwrap();
         assert_eq!(
-            p.redeem_at(Credential::Pin(&o2.pin), ip(9), after),
+            p.redeem_at(Credential::Pin(&fresh.pin), ip(9), after),
+            Ok(Role::Operator)
+        );
+    }
+
+    #[test]
+    fn four_wrong_pins_do_not_lock() {
+        let p = pairing();
+        let t0 = Instant::now();
+        let o = p.create_offer_at(Role::Operator, t0).unwrap();
+        for _ in 0..4 {
+            let _ = p.redeem_at(Credential::Pin(wrong_pin(&o)), ip(9), t0);
+        }
+        assert_eq!(
+            p.redeem_at(Credential::Pin(&o.pin), ip(9), t0),
             Ok(Role::Operator)
         );
     }
 
     #[test]
     fn a_distributed_sweep_trips_the_global_lock() {
-        let p = Pairing::new(Duration::from_secs(600), 2, 1000, Duration::from_secs(300));
+        let p = Pairing::new(Duration::from_secs(120), 1000, Duration::from_secs(300));
         let t0 = Instant::now();
         let o = p.create_offer_at(Role::Operator, t0).unwrap();
-        let wrong = if o.pin == "000000" {
-            "000001"
-        } else {
-            "000000"
-        };
         for n in 0..GLOBAL_MAX_FAILURES {
             let _ = p.redeem_at(
-                Credential::Pin(wrong),
+                Credential::Pin(wrong_pin(&o)),
                 IpAddr::from([10, 0, 0, n as u8]),
                 t0,
             );

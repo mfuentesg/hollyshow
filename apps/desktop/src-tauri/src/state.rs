@@ -292,7 +292,7 @@ impl AppState {
         #[cfg(debug_assertions)]
         load_demo_show(&app);
 
-        let remote = Remote::new(app.clone(), repos.settings.clone());
+        let remote = Remote::new(app.clone(), repos.settings.clone(), paths.data_dir.clone());
         Ok(Self {
             app,
             store,

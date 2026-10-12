@@ -48,6 +48,12 @@ export interface PairingInfo {
   urls?: string[];
   /** False when the PC has no LAN address; the UI says so instead of drawing a useless QR. */
   networkAvailable?: boolean;
+  /** The remote serves HTTPS (self-signed certificate). */
+  https?: boolean;
+  /** SHA-256 fingerprint of the certificate (`AB:CD:...`), to compare on the phone. */
+  fingerprint?: string | null;
+  /** Minutes a PIN / QR stays valid (1-10). Each code works once. */
+  ttlMin?: number;
 }
 
 /** Roles a PIN can grant (the congregation joins without pairing). */
@@ -188,6 +194,10 @@ export interface HostApi {
   /** Role the next PINs grant; invalidates the current PIN. */
   setPairingRole(role: PairingRole): Promise<PairingInfo>;
   setRemoteEnabled(enabled: boolean): Promise<PairingInfo>;
+  /** HTTPS on/off (self-signed certificate); the listener restarts when it was running. */
+  setRemoteHttps(enabled: boolean): Promise<PairingInfo>;
+  /** Minutes (1-10) new PINs / QR codes stay valid; replaces the code on screen. */
+  setPairingTtl(minutes: number): Promise<PairingInfo>;
   listDevices(): Promise<RemoteDevice[]>;
   kickDevice(id: string): Promise<void>;
 
@@ -233,6 +243,8 @@ export const HOST_COMMANDS = {
   regeneratePin: "regenerate_pin",
   setPairingRole: "set_pairing_role",
   setRemoteEnabled: "set_remote_enabled",
+  setRemoteHttps: "set_remote_https",
+  setPairingTtl: "set_pairing_ttl",
   listDevices: "list_devices",
   kickDevice: "kick_device",
   usageReport: "usage_report",

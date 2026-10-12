@@ -321,6 +321,30 @@ pub fn kick_device(state: State<'_, AppState>, id: String) -> Result<(), WireErr
     }
 }
 
+/// HTTPS on/off (self-signed certificate; the listener restarts when it was running).
+#[tauri::command]
+pub async fn set_remote_https(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<PairingInfo, WireError> {
+    state
+        .remote
+        .set_https(enabled)
+        .await
+        .map_err(|e| err("remote", e))?;
+    state.remote.pairing(true).map_err(|e| err("remote", e))
+}
+
+/// Minutes a PIN / QR stays valid (1-10); the code on screen is replaced.
+#[tauri::command(async)]
+pub fn set_pairing_ttl(state: State<'_, AppState>, minutes: u32) -> Result<PairingInfo, WireError> {
+    state
+        .remote
+        .set_pairing_ttl(u64::from(minutes))
+        .map_err(|e| err("remote", e))?;
+    state.remote.pairing(true).map_err(|e| err("remote", e))
+}
+
 /// Changing the role a new PIN grants also invalidates the old PIN.
 #[tauri::command(async)]
 pub fn set_pairing_role(

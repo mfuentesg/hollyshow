@@ -5,9 +5,10 @@ use crate::connections::{Connections, Limits};
 use crate::devices::DeviceStore;
 use crate::pairing::Pairing;
 use crate::ratelimit::IpLimiter;
+use crate::tls::TlsIdentity;
 use hollyshow_app::AppService;
 use std::sync::atomic::{AtomicBool, AtomicU16};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::sync::watch;
 
 pub struct Shared {
@@ -27,6 +28,8 @@ pub struct Shared {
     /// Actual listening port (differs from `config.bind` when that asked for port 0).
     pub port: AtomicU16,
     pub mdns_active: AtomicBool,
+    /// The current HTTPS certificate while TLS is enabled (replaced when the LAN addresses change).
+    pub tls: RwLock<Option<Arc<TlsIdentity>>>,
 }
 
 impl Shared {
@@ -36,7 +39,6 @@ impl Shared {
         Arc::new(Self {
             pairing: Pairing::new(
                 config.pairing_ttl,
-                config.pin_max_uses,
                 config.max_failures_per_ip,
                 config.lockout,
             ),
@@ -61,8 +63,26 @@ impl Shared {
             shutdown,
             port: AtomicU16::new(config.bind.port()),
             mdns_active: AtomicBool::new(false),
+            tls: RwLock::new(None),
             service,
             config,
         })
+    }
+
+    pub fn tls_identity(&self) -> Option<Arc<TlsIdentity>> {
+        self.tls.read().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    pub fn set_tls_identity(&self, id: Option<Arc<TlsIdentity>>) {
+        *self.tls.write().unwrap_or_else(|p| p.into_inner()) = id;
+    }
+
+    /// `https` while TLS is on, `http` otherwise.
+    pub fn scheme(&self) -> &'static str {
+        if self.tls_identity().is_some() {
+            "https"
+        } else {
+            "http"
+        }
     }
 }

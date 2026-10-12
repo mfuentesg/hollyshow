@@ -149,6 +149,9 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
     url: "http://hollyshow.local:7420",
     pin: "418266",
     pinExpiresMs: null,
+    https: false,
+    fingerprint: null,
+    ttlMin: 2,
   };
   let pinCounter = 0;
 
@@ -711,6 +714,22 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
       pairing = { ...pairing, enabled };
       return pairing;
     },
+    async setRemoteHttps(enabled) {
+      const url = pairing.url.replace(/^https?:/, enabled ? "https:" : "http:");
+      pairing = {
+        ...pairing,
+        url,
+        https: enabled,
+        fingerprint: enabled
+          ? "3F:9A:1C:77:0B:E2:54:D8:6A:91:C3:0E:BD:42:F7:18:A5:60:2D:E9:73:8C:14:BA:56:F0:9D:21:C8:47:E3:0A"
+          : null,
+      };
+      return pairing;
+    },
+    async setPairingTtl(minutes) {
+      pairing = { ...pairing, ttlMin: Math.min(10, Math.max(1, Math.round(minutes))) };
+      return pairing;
+    },
     async listDevices() {
       return devices;
     },
@@ -725,10 +744,10 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
         const row = rows.get(u.songId) ?? {
           songId: u.songId,
           title: song?.title ?? null,
+          author: song?.author ?? null,
           ccli: song?.ccli ?? null,
           timesShown: 0,
           lastShownAt: 0,
-          author: song?.author ?? null,
         };
         row.timesShown += 1;
         row.lastShownAt = Math.max(row.lastShownAt, u.shownAt);

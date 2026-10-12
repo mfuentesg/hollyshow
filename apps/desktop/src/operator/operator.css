@@ -1160,3 +1160,10 @@ button.picklist__row:hover {
 .tile:focus-visible {
   outline-style: dotted;
 }
+
+.fingerprint {
+  display: block;
+  max-width: 34ch;
+  overflow-wrap: anywhere;
+  color: var(--hs-text);
+}

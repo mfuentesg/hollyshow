@@ -41,7 +41,7 @@
 //!
 //! # Transport and session security
 //!
-//! The LAN transport is plain HTTP/WS: session tokens and the show travel in cleartext, so pair
+//! By default the LAN transport is plain HTTP/WS (HTTPS is opt-in): session tokens and the show travel in cleartext, so pair
 //! devices only on a Wi-Fi you trust (the pairing screen says so). Tokens are hashed at rest,
 //! expire after 30 idle days / 180 days overall, and are rotated on reconnect once a week (the
 //! new token arrives in `welcome.token`). Raw sockets are budgeted (global and per address), HTTP
@@ -49,7 +49,15 @@
 //! rate limit. A paired device keeps one command-dedupe window across reconnects (`dev-<id>`),
 //! released `session_grace` after its last socket closes.
 //!
-//! TODO(post-v1): HTTPS with a local CA (PLAN §5.1) and WebRTC/QUIC transports are out of scope.
+//! # Optional HTTPS
+//!
+//! With [`ServerConfig::tls`] set the same port speaks HTTPS (rustls) and redirects plain HTTP to
+//! it. The certificate is self-signed, covers `hollyshow.local` and the machine's LAN addresses,
+//! lives in the configured directory and is renewed when an address it lacks appears. Phones show
+//! a one-time warning; the operator can compare [`Server::tls_fingerprint`] with the certificate
+//! the browser shows. HTTPS gives phones a secure context (wake lock, install as app).
+//!
+//! TODO(post-v1): a local CA (PLAN §5.1) and WebRTC/QUIC transports are out of scope.
 
 mod assets;
 mod config;
@@ -62,10 +70,14 @@ mod pairing;
 mod ratelimit;
 mod serve;
 mod shared;
+mod tls;
 mod util;
 mod ws;
 
-pub use config::{ServerConfig, DEFAULT_PORT};
+pub use config::{
+    clamp_pairing_ttl, ServerConfig, TlsConfig, DEFAULT_PAIRING_TTL, DEFAULT_PORT,
+    PAIRING_TTL_MINUTES,
+};
 pub use connections::{ConnKind, ConnectionInfo, Counts};
 pub use devices::PairedDevice;
 pub use http::{Diagnostics, PairingOffer};
@@ -122,6 +134,13 @@ impl Server {
                 format!("refusing to bind to non-private address {ip}"),
             ));
         }
+        if let Some(t) = &cfg.tls {
+            let id = refresh_tls(&t.dir).await?;
+            log::info!("HTTPS enabled, certificate SHA-256 {}", id.fingerprint);
+            self.shared.set_tls_identity(Some(id));
+        } else {
+            self.shared.set_tls_identity(None);
+        }
         let listener = TcpListener::bind(cfg.bind).await?;
         let addr = listener.local_addr()?;
         self.shared
@@ -147,6 +166,22 @@ impl Server {
     /// (QR) or few-use (PIN).
     pub fn pairing_offer(&self, role: Role) -> Result<PairingOffer, PairError> {
         http::offer(&self.shared, role)
+    }
+
+    /// Changes the lifetime of PINs / QR codes created from now on (clamped to 1-10 minutes).
+    pub fn set_pairing_ttl_minutes(&self, minutes: u64) {
+        self.shared.pairing.set_ttl(clamp_pairing_ttl(minutes));
+    }
+
+    /// Whether the offer with this QR token can still be used (not spent, not expired).
+    pub fn offer_is_live(&self, token: &str) -> bool {
+        self.shared.pairing.is_live(token)
+    }
+
+    /// SHA-256 fingerprint (`AB:CD:...`) of the HTTPS certificate in use; `None` over plain HTTP
+    /// (or before [`Server::start`]).
+    pub fn tls_fingerprint(&self) -> Option<String> {
+        self.shared.tls_identity().map(|t| t.fingerprint.clone())
     }
 
     /// Invalidates every open PIN / QR.
@@ -186,7 +221,8 @@ impl Server {
         http::has_network()
     }
 
-    /// Base URLs a phone can use (`http://192.168.1.20:7420`, `http://hollyshow.local:7420`).
+    /// Base URLs a phone can use (`http://192.168.1.20:7420`, `http://hollyshow.local:7420`;
+    /// `https://` while TLS is on).
     pub fn urls(&self) -> Vec<String> {
         http::base_urls(&self.shared)
     }
@@ -237,6 +273,21 @@ async fn supervise_network(shared: Arc<Shared>, port: u16) {
     let mut mdns: Option<mdns::Mdns> = None;
     let mut last: Option<Vec<IpAddr>> = None;
     loop {
+        if let Some(t) = &cfg.tls {
+            // A new Wi-Fi or DHCP lease adds an address the certificate does not cover.
+            match refresh_tls(&t.dir).await {
+                Ok(id) => {
+                    let changed = shared
+                        .tls_identity()
+                        .is_none_or(|cur| cur.fingerprint != id.fingerprint);
+                    if changed {
+                        log::info!("HTTPS certificate renewed, SHA-256 {}", id.fingerprint);
+                        shared.set_tls_identity(Some(id));
+                    }
+                }
+                Err(e) => log::warn!("HTTPS certificate refresh failed: {e}"),
+            }
+        }
         if cfg.mdns {
             let addrs = tokio::task::spawn_blocking(net::lan_addrs)
                 .await
@@ -277,6 +328,17 @@ async fn supervise_network(shared: Arc<Shared>, port: u16) {
         }
     }
     shared.mdns_active.store(false, Relaxed);
+}
+
+/// Loads (or creates / renews) the certificate in `dir` for the machine's current addresses.
+async fn refresh_tls(dir: &std::path::Path) -> io::Result<Arc<tls::TlsIdentity>> {
+    let dir = dir.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let ips = net::lan_ipv4();
+        tls::load_or_create(&dir, &tls::wanted_sans(&ips)).map(Arc::new)
+    })
+    .await
+    .map_err(io::Error::other)?
 }
 
 /// Convenience: the routes for `app` with no host handle (tests, embedding). Needs

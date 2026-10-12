@@ -15,6 +15,24 @@ function ago(ms: number, t: (k: string, o?: Record<string, unknown>) => string):
   return t("settings.remote.agoHours", { n: Math.round(s / 3600) });
 }
 
+function clock(totalSecs: number): string {
+  const s = Math.max(0, totalSecs);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function Fingerprint({ value }: { value: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className="stack">
+      <span className="muted small">{t("settings.remote.fingerprint")}</span>
+      <code className="mono small fingerprint" data-testid="fingerprint">
+        {value}
+      </code>
+      <span className="muted small">{t("settings.remote.fingerprintHint")}</span>
+    </div>
+  );
+}
+
 /** Remote pairing: QR + PIN and the paired device list (with kick). */
 export function RemoteSettings() {
   const { t } = useTranslation();
@@ -62,6 +80,37 @@ export function RemoteSettings() {
       />
 
       {pairing?.enabled && (
+        <>
+          <SwitchRow
+            label={t("settings.remote.httpsEnabled")}
+            checked={pairing.https ?? false}
+            disabled={busy}
+            onChange={(v) => void guard(() => host.setRemoteHttps(v))}
+          />
+          <p className="muted small">
+            {pairing.https ? t("settings.remote.httpsOn") : t("settings.remote.httpsHint")}
+          </p>
+          {pairing.https && pairing.fingerprint && <Fingerprint value={pairing.fingerprint} />}
+          <Field label={t("settings.remote.ttl")} hint={t("settings.remote.ttlHint")}>
+            {(id) => (
+              <Select
+                id={id}
+                value={String(pairing.ttlMin ?? 2)}
+                disabled={busy}
+                onChange={(e) => void guard(() => host.setPairingTtl(Number(e.target.value)))}
+              >
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {t("settings.remote.ttlOption", { n })}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </>
+      )}
+
+      {pairing?.enabled && (
         <Field label={t("settings.remote.pairingRole")} hint={t("settings.remote.pairingRoleHint")}>
           {(id) => (
             <Select
@@ -86,7 +135,7 @@ export function RemoteSettings() {
 
       {pairing?.enabled && role === "operator" && (
         <p className="muted" role="alert">
-          {t("settings.remote.operatorWarning")}
+          {t("settings.remote.operatorWarning", { min: pairing.ttlMin ?? 2 })}
         </p>
       )}
 
@@ -121,12 +170,15 @@ export function RemoteSettings() {
                   : pairing.pin}
               </span>
               {pairing.pinExpiresMs !== null && (
-                <span className="muted small">
-                  {t("settings.remote.expires", {
-                    secs: Math.max(0, Math.round((pairing.pinExpiresMs - now) / 1000)),
-                  })}
+                <span className="muted small" role="timer" aria-live="off">
+                  {pairing.pinExpiresMs <= now
+                    ? t("settings.remote.expired")
+                    : t("settings.remote.expires", {
+                        time: clock(Math.ceil((pairing.pinExpiresMs - now) / 1000)),
+                      })}
                 </span>
               )}
+              {pairing.https && pairing.fingerprint && <Fingerprint value={pairing.fingerprint} />}
               <Button
                 size="sm"
                 disabled={busy}
@@ -136,7 +188,7 @@ export function RemoteSettings() {
               </Button>
             </div>
           </div>
-          <p className="muted small">{t("settings.remote.cleartext")}</p>
+          {!pairing.https && <p className="muted small">{t("settings.remote.cleartext")}</p>}
         </section>
       )}
 

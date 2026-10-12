@@ -84,6 +84,38 @@ describe("settings", () => {
     await waitFor(() => expect(screen.queryByText("iPhone de Ana")).not.toBeInTheDocument());
   });
 
+  it("shows a countdown, the one-time note and a Generar nuevo button", async () => {
+    const user = userEvent.setup();
+    renderApp("/operator/settings/remote");
+    expect(await screen.findByRole("button", { name: "Generar nuevo" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Generar nuevo" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^PIN \d \d \d \d \d \d$/)).toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText("Validez del PIN y del QR")).toHaveValue("2");
+  });
+
+  it("changes the code validity from 1 to 10 minutes", async () => {
+    const user = userEvent.setup();
+    renderApp("/operator/settings/remote");
+    const select = await screen.findByLabelText("Validez del PIN y del QR");
+    expect(screen.getAllByRole("option", { name: /^\d+ min$/ })).toHaveLength(10);
+    await user.selectOptions(select, "7");
+    await waitFor(() => expect(screen.getByLabelText("Validez del PIN y del QR")).toHaveValue("7"));
+  });
+
+  it("turns HTTPS on and shows the certificate fingerprint in Settings and in the pairing card", async () => {
+    const user = userEvent.setup();
+    renderApp("/operator/settings/remote");
+    const toggle = await screen.findByRole("checkbox", { name: /Usar HTTPS/ });
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByTestId("fingerprint")).not.toBeInTheDocument();
+    await user.click(toggle);
+    await waitFor(() => expect(screen.getAllByTestId("fingerprint")).toHaveLength(2));
+    expect(screen.getAllByTestId("fingerprint")[0]).toHaveTextContent(/^3F:9A:1C/);
+    expect(screen.getByText(/https:\/\/hollyshow\.local/)).toBeInTheDocument();
+  });
+
   it("manages Bible versions: default radio and ordering", async () => {
     const user = userEvent.setup();
     renderApp("/operator/settings/bible");

@@ -101,6 +101,8 @@ pub fn run() {
             host::regenerate_pin,
             host::set_remote_enabled,
             host::set_pairing_role,
+            host::set_pairing_ttl,
+            host::set_remote_https,
             host::list_devices,
             host::kick_device,
             host::health,

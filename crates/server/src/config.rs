@@ -1,12 +1,32 @@
 //! Server configuration. Every limit is a field so tests (and the settings screen) can tune it.
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::time::Duration;
 
 const DAY: u64 = 24 * 60 * 60;
 
 /// Default TCP port of the LAN server.
 pub const DEFAULT_PORT: u16 = 7420;
+
+/// Default lifetime of a pairing offer.
+pub const DEFAULT_PAIRING_TTL: Duration = Duration::from_secs(2 * 60);
+/// Bounds of the user-configurable offer lifetime, in minutes.
+pub const PAIRING_TTL_MINUTES: std::ops::RangeInclusive<u64> = 1..=10;
+
+/// The offer lifetime for a number of minutes typed in Settings, forced into 1-10.
+pub fn clamp_pairing_ttl(minutes: u64) -> Duration {
+    Duration::from_secs(
+        minutes.clamp(*PAIRING_TTL_MINUTES.start(), *PAIRING_TTL_MINUTES.end()) * 60,
+    )
+}
+
+/// Optional HTTPS for the LAN server.
+#[derive(Debug, Clone)]
+pub struct TlsConfig {
+    /// Where `cert.pem`, `key.pem` and `sans.txt` live (the app data directory).
+    pub dir: PathBuf,
+}
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -35,13 +55,16 @@ pub struct ServerConfig {
     pub hello_timeout: Duration,
     /// How long one write to a client may take before the client is considered dead.
     pub write_timeout: Duration,
-    /// Lifetime of a pairing offer (PIN and QR token).
+    /// Lifetime of a pairing offer (PIN and QR token, one-time use). Clamp user input with
+    /// [`clamp_pairing_ttl`].
     pub pairing_ttl: Duration,
-    /// How many devices may pair with one PIN (the QR token is always single use).
-    pub pin_max_uses: u32,
-    /// Failed credentials from one address before it is locked out.
+    /// Wrong credentials from one address before it is locked out.
     pub max_failures_per_ip: u32,
+    /// How long a locked-out address stays locked.
     pub lockout: Duration,
+    /// Serve HTTPS (self-signed certificate kept in `dir`) and redirect plain HTTP to it.
+    /// `None`: plain HTTP only (the default).
+    pub tls: Option<TlsConfig>,
     /// Sustained frames per second a socket may send (burst is `frame_burst`).
     pub frames_per_sec: f64,
     pub frame_burst: u32,
@@ -86,10 +109,10 @@ impl Default for ServerConfig {
             heartbeat: Duration::from_secs(5),
             hello_timeout: Duration::from_secs(10),
             write_timeout: Duration::from_secs(10),
-            pairing_ttl: Duration::from_secs(10 * 60),
-            pin_max_uses: 5,
+            pairing_ttl: DEFAULT_PAIRING_TTL,
             max_failures_per_ip: 5,
             lockout: Duration::from_secs(5 * 60),
+            tls: None,
             frames_per_sec: 30.0,
             frame_burst: 60,
             http_burst: 30,

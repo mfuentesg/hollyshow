@@ -276,24 +276,31 @@ pub struct PairingOffer {
     /// SVG of the QR for the first URL; empty when the machine has no LAN address (a QR for
     /// `127.0.0.1` would be useless to a phone).
     pub qr_svg: String,
+    /// SHA-256 fingerprint (`AB:CD:...`) of the HTTPS certificate, `None` over plain HTTP. The
+    /// operator reads it out so a phone can check it against the certificate its browser shows.
+    pub fingerprint: Option<String>,
     /// Whether any LAN address exists. When `false`, `urls` only holds the loopback address and
     /// the UI should say "no network" instead of showing a QR.
     pub network_available: bool,
 }
 
-/// Base URLs (`http://ip:port`) at which this server is reachable on the LAN, best first (the
+/// Base URLs (`http://ip:port`, `https://` while TLS is on) at which this server is reachable on the LAN, best first (the
 /// default-route interface, then other real adapters, then virtual ones; see
 /// [`net::rank_lan`]). Without any LAN address it is the loopback URL only; check
 /// [`has_network`] to tell.
 pub fn base_urls(s: &Shared) -> Vec<String> {
     let port = s.port.load(Ordering::Relaxed);
     let ips = net::lan_ipv4();
-    let mut urls: Vec<String> = ips.iter().map(|ip| format!("http://{ip}:{port}")).collect();
+    let scheme = s.scheme();
+    let mut urls: Vec<String> = ips
+        .iter()
+        .map(|ip| format!("{scheme}://{ip}:{port}"))
+        .collect();
     if s.mdns_active.load(Ordering::Relaxed) && !ips.is_empty() {
-        urls.push(format!("http://{}:{port}", mdns::HOSTNAME));
+        urls.push(format!("{scheme}://{}:{port}", mdns::HOSTNAME));
     }
     if urls.is_empty() {
-        urls.push(format!("http://127.0.0.1:{port}"));
+        urls.push(format!("{scheme}://127.0.0.1:{port}"));
     }
     urls
 }
@@ -322,6 +329,7 @@ pub fn offer(s: &Shared, role: Role) -> Result<PairingOffer, PairError> {
         expires_in_secs: o.expires_in.as_secs(),
         urls,
         qr_svg,
+        fingerprint: s.tls_identity().map(|t| t.fingerprint.clone()),
         network_available,
     })
 }
@@ -504,7 +512,7 @@ pub async fn diagnose(s: &Shared, client: Option<SocketAddr>) -> Diagnostics {
         .zip(results)
         .map(|(iface, reachable)| {
             let url = (iface.ip.is_ipv4() && iface.is_private && !iface.is_loopback)
-                .then(|| format!("http://{}:{port}", iface.ip));
+                .then(|| format!("{}://{}:{port}", s.scheme(), iface.ip));
             InterfaceReport {
                 iface,
                 reachable,
