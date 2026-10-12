@@ -4,7 +4,7 @@
 
 1. Sube la versión en un solo lugar: `version` de `[workspace.package]` en `Cargo.toml`, y la misma en
    `apps/desktop/src-tauri/tauri.conf.json` y los `package.json`. `scripts/check-version.mjs` (CI y release) falla si no coinciden con el tag.
-2. Commit en `master` y espera a que CI (`.github/workflows/ci.yml`) esté en verde.
+2. Commit en `main` y espera a que CI (`.github/workflows/ci.yml`) esté en verde.
 3. Crea y sube el tag:
 
    ```sh

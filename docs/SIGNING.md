@@ -75,7 +75,7 @@ Detalles actualizados: https://v2.tauri.app/distribute/sign/windows/ y https://v
 
        git commit -am "Release v0.2.0"
        git tag v0.2.0
-       git push origin master --tags
+       git push origin main --tags
 
 3. El workflow **Release** compila macOS (universal), Windows y Linux, firma las actualizaciones y publica el release con `latest.json`.
    - Tags `vX.Y.Z` → release estable (las apps instaladas lo detectan).
@@ -86,6 +86,6 @@ Detalles actualizados: https://v2.tauri.app/distribute/sign/windows/ y https://v
 
 - [ ] Clave pública propia en `tauri.conf.json` y secretos del actualizador en GitHub.
 - [ ] Versión actualizada en los tres archivos.
-- [ ] CI en verde en `master`.
+- [ ] CI en verde en `main`.
 - [ ] (Recomendado) Secretos de firma de Apple y Windows configurados.
 - [ ] Probar la actualización: instalar la versión anterior y verificar que aparece el aviso "nueva versión".
