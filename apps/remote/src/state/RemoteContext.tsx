@@ -1,3 +1,4 @@
+import { isStaleCommandCode } from "@hollyshow/protocol";
 import type { Ack, Command, ConnectionStatus } from "@hollyshow/protocol";
 import {
   createContext,
@@ -70,8 +71,9 @@ export function RemoteProvider({
         const ack = await client.dispatch(cmd);
         if (!ack.ok) {
           const code = ack.error?.code ?? "";
-          // A stale relative command (double tap, retry) is already resolved by the state refresh.
-          if (code !== "version_mismatch") {
+          // A stale relative command (double tap, retry, host restart) is already resolved by the
+          // state refresh.
+          if (!isStaleCommandCode(code)) {
             buzz([30, 40, 30]);
             toast(
               code === "forbidden"

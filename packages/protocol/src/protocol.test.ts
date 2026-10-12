@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PROTOCOL_VERSION, commands, createMockApi } from "./index";
+import { PROTOCOL_VERSION, commands, createMockApi, isStaleCommandCode } from "./index";
 
 describe("protocol constants", () => {
   it("matches the Rust PROTOCOL_VERSION", () => {
@@ -45,6 +45,13 @@ describe("mock adapter", () => {
     expect(r.error?.code).toBe("epoch_mismatch");
     expect(api.state.version).toBe(version);
     expect((await api.dispatch(commands.next({ epoch, version }))).ok).toBe(true);
+  });
+
+  it("treats version and epoch mismatches as stale-command codes", () => {
+    expect(isStaleCommandCode("version_mismatch")).toBe(true);
+    expect(isStaleCommandCode("epoch_mismatch")).toBe(true);
+    expect(isStaleCommandCode("locked")).toBe(false);
+    expect(isStaleCommandCode(undefined)).toBe(false);
   });
 
   it("answers typed queries", async () => {

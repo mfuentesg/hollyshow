@@ -6,6 +6,7 @@ import {
   type PlaylistSummary,
   type SongSummary,
   type Theme,
+  isStaleCommandCode,
 } from "@hollyshow/protocol";
 import { defaultTheme } from "@hollyshow/slide-renderer";
 import {
@@ -191,7 +192,7 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
     async (cmd: Command): Promise<Ack | null> => {
       try {
         const ack = await api.dispatch(cmd);
-        if (!ack.ok && ack.error && ack.error.code !== "version_mismatch") {
+        if (!ack.ok && ack.error && !isStaleCommandCode(ack.error.code)) {
           toasts.push(
             ack.error.code === "locked"
               ? t("errors.locked")
