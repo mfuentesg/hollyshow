@@ -7,7 +7,8 @@ use crate::http::{HttpFetcher, HttpRequest, HttpResponse};
 use crate::keywords::translate_query;
 use crate::license::LicensePolicy;
 use crate::types::{
-    ImageSource, SearchPage, SearchRequest, SearchResponse, SourceFailure, SourceFilter,
+    ImageSource, MediaResult, SearchPage, SearchRequest, SearchResponse, SourceFailure,
+    SourceFilter,
 };
 use crate::{commons, openverse};
 
@@ -30,8 +31,6 @@ pub struct MediaConfig {
     /// Base delay of the exponential backoff when the server sends no `Retry-After`.
     pub base_backoff: Duration,
     pub max_download_bytes: usize,
-    /// Host suffixes images may be downloaded from (see [`crate::http::DOWNLOAD_HOSTS`]).
-    pub download_hosts: Vec<String>,
 }
 
 impl Default for MediaConfig {
@@ -48,10 +47,6 @@ impl Default for MediaConfig {
             max_wait: Duration::from_secs(20),
             base_backoff: Duration::from_secs(1),
             max_download_bytes: 40 * 1024 * 1024,
-            download_hosts: crate::http::DOWNLOAD_HOSTS
-                .iter()
-                .map(|h| (*h).to_owned())
-                .collect(),
         }
     }
 }
@@ -218,6 +213,7 @@ impl<F: HttpFetcher> MediaClient<F> {
                     url,
                     headers,
                     max_bytes: 4 * 1024 * 1024,
+                    accept_types: &[],
                 },
                 name,
             )
@@ -234,15 +230,42 @@ impl<F: HttpFetcher> MediaClient<F> {
         Ok(parsed)
     }
 
-    /// Downloads an image file (no credentials are ever attached).
+    /// Downloads an image file (no credentials are ever attached). Any public https host is
+    /// accepted; the fetcher re-validates every redirect hop, the content type and the size.
     pub async fn fetch_image(&self, url: &str) -> Result<Vec<u8>, MediaError> {
-        crate::http::check_download_url(url, &self.config.download_hosts)?;
+        crate::http::check_download_url(url)?;
         let req = HttpRequest {
             url: url.to_string(),
             headers: Vec::new(),
             max_bytes: self.config.max_download_bytes,
+            accept_types: crate::http::IMAGE_TYPES,
         };
         Ok(self.get_with_backoff(req, "image host").await?.body)
+    }
+
+    /// Downloads the image of `result`. When the original URL fails and the image comes from
+    /// Openverse, falls back to Openverse's own proxy for that id and then to its thumbnail.
+    /// The first error is returned when every candidate fails.
+    pub async fn fetch_result_image(&self, result: &MediaResult) -> Result<Vec<u8>, MediaError> {
+        let first = match self.fetch_image(&result.full_url).await {
+            Ok(b) => return Ok(b),
+            Err(e) => e,
+        };
+        let mut fallbacks = Vec::new();
+        if result.source == ImageSource::Openverse {
+            let id = crate::types::sanitize_id(&result.id);
+            if !id.is_empty() {
+                let base = self.config.openverse_base.trim_end_matches('/');
+                fallbacks.push(format!("{base}/{id}/thumb/"));
+            }
+            fallbacks.push(result.thumb_url.clone());
+        }
+        for url in fallbacks.into_iter().filter(|u| *u != result.full_url) {
+            if let Ok(bytes) = self.fetch_image(&url).await {
+                return Ok(bytes);
+            }
+        }
+        Err(first)
     }
 
     /// GET with HTTP 429/503 handling: waits `Retry-After` (or exponential backoff) and retries up
@@ -558,12 +581,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_hosts_outside_the_allow_list() {
+    async fn rejects_non_public_hosts() {
         let f = FakeFetcher::default().route("", vec![FakeFetcher::ok(b"x")]);
         let c = client(f.clone());
         for u in [
             "https://169.254.169.254/latest/meta-data",
-            "https://intranet.example/a.jpg",
+            "https://intranet/a.jpg",
             "https://localhost/a.jpg",
         ] {
             assert!(
@@ -572,10 +595,16 @@ mod tests {
             );
         }
         assert!(f.requests.lock().unwrap().is_empty(), "nothing was fetched");
-        assert!(c
-            .fetch_image("https://upload.wikimedia.org/a.jpg")
-            .await
-            .is_ok());
+        for ok in [
+            "https://upload.wikimedia.org/a.jpg",
+            "https://cdn.some-photographer.example/a.jpg",
+        ] {
+            assert!(c.fetch_image(ok).await.is_ok(), "{ok}");
+        }
+        let reqs = f.requests.lock().unwrap();
+        assert!(reqs
+            .iter()
+            .all(|r| r.accept_types == crate::http::IMAGE_TYPES));
     }
 
     #[tokio::test]
@@ -589,5 +618,58 @@ mod tests {
             c.fetch_image("file:///etc/passwd").await,
             Err(MediaError::InvalidDownload(_))
         ));
+    }
+
+    fn ov_result() -> MediaResult {
+        MediaResult {
+            source: ImageSource::Openverse,
+            id: "abc-123".into(),
+            title: "t".into(),
+            thumb_url: "https://thumbs.example.com/t.jpg".into(),
+            full_url: "https://photos.example.com/full.jpg".into(),
+            width: 2000,
+            height: 1000,
+            creator: None,
+            creator_url: None,
+            license: "CC0".into(),
+            license_url: None,
+            source_page: String::new(),
+            attribution: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_the_openverse_proxy_when_the_original_fails() {
+        let f = FakeFetcher::default()
+            .route("photos.example.com", vec![FakeFetcher::status(404, None)])
+            .route("/abc-123/thumb/", vec![FakeFetcher::ok(b"proxied")]);
+        let c = client(f.clone());
+        assert_eq!(
+            c.fetch_result_image(&ov_result()).await.unwrap(),
+            b"proxied"
+        );
+        assert_eq!(f.count("photos.example.com"), 1);
+        assert_eq!(f.count("api.openverse.org/v1/images/abc-123/thumb/"), 1);
+    }
+
+    #[tokio::test]
+    async fn fallback_reports_the_original_error_when_everything_fails() {
+        let f = FakeFetcher::default().route("", vec![FakeFetcher::status(404, None)]);
+        let c = client(f.clone());
+        let e = c.fetch_result_image(&ov_result()).await.unwrap_err();
+        assert!(matches!(e, MediaError::Http { status: 404, .. }));
+        assert_eq!(f.count("full.jpg"), 1);
+        assert_eq!(f.count("t.jpg"), 1);
+        assert_eq!(f.count("/thumb/"), 1);
+    }
+
+    #[tokio::test]
+    async fn commons_images_have_no_fallback() {
+        let f = FakeFetcher::default().route("", vec![FakeFetcher::status(404, None)]);
+        let c = client(f.clone());
+        let mut r = ov_result();
+        r.source = ImageSource::Commons;
+        assert!(c.fetch_result_image(&r).await.is_err());
+        assert_eq!(f.requests.lock().unwrap().len(), 1);
     }
 }

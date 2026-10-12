@@ -53,6 +53,7 @@ fn extension(fmt: ImageFormat) -> Option<&'static str> {
         ImageFormat::Jpeg => Some("jpg"),
         ImageFormat::Png => Some("png"),
         ImageFormat::WebP => Some("webp"),
+        ImageFormat::Gif => Some("gif"),
         _ => None,
     }
 }
@@ -228,7 +229,7 @@ impl MediaLibrary {
         if let Some(existing) = self.get(&result.key())? {
             return Ok(existing);
         }
-        let bytes = client.fetch_image(&result.full_url).await?;
+        let bytes = client.fetch_result_image(result).await?;
         let lib = self.clone();
         let result = result.clone();
         tokio::task::spawn_blocking(move || lib.store(&result, &bytes))
@@ -312,9 +313,7 @@ pub(crate) mod tests {
 
     /// Default configuration that also trusts the fake image host used by the fixtures.
     pub fn test_config() -> MediaConfig {
-        let mut c = MediaConfig::default();
-        c.download_hosts.push("example.org".into());
-        c
+        MediaConfig::default()
     }
 
     pub fn sample(id: &str, license: &str) -> MediaResult {
