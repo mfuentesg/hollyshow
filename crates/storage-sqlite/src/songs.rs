@@ -391,6 +391,23 @@ impl SongRepo for Store {
         .map_err(map_err)?;
         Ok(())
     }
+
+    fn recent_usage(&self, since_ms: i64) -> StorageResult<Vec<(SongId, i64)>> {
+        let conn = self.read();
+        let mut st = conn
+            .prepare_cached(
+                "SELECT song_id, MAX(shown_at) FROM usage_log WHERE shown_at >= ?1 GROUP BY song_id",
+            )
+            .map_err(map_err)?;
+        let rows = st
+            .query_map([since_ms], |r| {
+                Ok((SongId::new(r.get::<_, String>(0)?), r.get::<_, i64>(1)?))
+            })
+            .map_err(map_err)?
+            .collect::<Result<_, _>>()
+            .map_err(map_err)?;
+        Ok(rows)
+    }
 }
 
 impl Store {

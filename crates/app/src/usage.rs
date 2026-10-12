@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A song that was already counted is not counted again for this long, even if the operator goes
-/// back to it. A different service (playlist) resets the window.
+/// back to it. A new calendar day (local time) resets the window.
 pub(crate) const REPEAT_WINDOW_MS: i64 = 30 * 60 * 1000;
 
 /// Decides which "song went live" observations are a new CCLI use.
@@ -21,17 +21,33 @@ pub(crate) const REPEAT_WINDOW_MS: i64 = 30 * 60 * 1000;
 /// - moving between slides of the song that is already live never counts;
 /// - a song counts once per presentation session: after being counted it is ignored for
 ///   [`REPEAT_WINDOW_MS`] (coming back to it after another item, or a double tap, is the same use);
-/// - opening a different service starts a new day: the history is forgotten.
+/// - a new local calendar day (a new service day) forgets the history. Switching playlists does
+///   not: the same song shown from another playlist within the window is the same use.
+///
+/// The history is seeded from the persisted usage log on start so a restart does not re-log.
 #[derive(Debug, Default)]
 pub(crate) struct UsageDedupe {
     current: Option<SongId>,
     counted_at: HashMap<SongId, i64>,
+    day: Option<i64>,
 }
 
 impl UsageDedupe {
+    /// Seeds the history with already persisted uses (`(song, shown_at_ms)`).
+    pub(crate) fn seed(&mut self, uses: impl IntoIterator<Item = (SongId, i64)>) {
+        for (song, at) in uses {
+            let e = self.counted_at.entry(song).or_insert(at);
+            *e = (*e).max(at);
+        }
+    }
+
     /// Observes the song now live (`None` when live shows something that is not a song).
-    /// Returns true when it must be logged.
-    pub(crate) fn observe(&mut self, song: Option<&SongId>, now_ms: i64) -> bool {
+    /// `day` is the local calendar day number of `now_ms`. Returns true when it must be logged.
+    pub(crate) fn observe(&mut self, song: Option<&SongId>, now_ms: i64, day: i64) -> bool {
+        if self.day.is_some_and(|d| d != day) {
+            self.counted_at.clear();
+        }
+        self.day = Some(day);
         let Some(song) = song else {
             self.current = None;
             return false;
@@ -50,11 +66,15 @@ impl UsageDedupe {
         self.counted_at.insert(song.clone(), now_ms);
         true
     }
+}
 
-    /// A new service was opened.
-    pub(crate) fn reset(&mut self) {
-        *self = Self::default();
-    }
+/// Local calendar day number (days since 1970-01-01 in the machine's time zone).
+pub(crate) fn local_day(now_ms: i64) -> i64 {
+    use chrono::{Local, TimeZone};
+    Local.timestamp_millis_opt(now_ms).single().map_or_else(
+        || now_ms.div_euclid(86_400_000),
+        |t| i64::from(chrono::Datelike::num_days_from_ce(&t)),
+    )
 }
 
 pub(crate) struct UsageLogger {
@@ -102,44 +122,61 @@ mod tests {
     #[test]
     fn first_time_counts_and_slide_moves_do_not() {
         let mut d = UsageDedupe::default();
-        assert!(d.observe(Some(&s("a")), 0));
-        assert!(!d.observe(Some(&s("a")), 1_000));
+        assert!(d.observe(Some(&s("a")), 0, 0));
+        assert!(!d.observe(Some(&s("a")), 1_000, 0));
         // Still the same song long after the window: moving slides is not a new use.
-        assert!(!d.observe(Some(&s("a")), REPEAT_WINDOW_MS * 3));
+        assert!(!d.observe(Some(&s("a")), REPEAT_WINDOW_MS * 3, 0));
     }
 
     #[test]
     fn returning_within_the_window_is_the_same_use() {
         let mut d = UsageDedupe::default();
-        assert!(d.observe(Some(&s("a")), 0));
-        assert!(d.observe(Some(&s("b")), 10));
-        assert!(!d.observe(Some(&s("a")), 20));
+        assert!(d.observe(Some(&s("a")), 0, 0));
+        assert!(d.observe(Some(&s("b")), 10, 0));
+        assert!(!d.observe(Some(&s("a")), 20, 0));
         // A non-song in between does not change that.
-        assert!(!d.observe(None, 30));
-        assert!(!d.observe(Some(&s("a")), 40));
+        assert!(!d.observe(None, 30, 0));
+        assert!(!d.observe(Some(&s("a")), 40, 0));
     }
 
     #[test]
     fn counts_again_after_the_window() {
         let mut d = UsageDedupe::default();
-        assert!(d.observe(Some(&s("a")), 0));
-        assert!(!d.observe(None, 1));
-        assert!(!d.observe(Some(&s("a")), REPEAT_WINDOW_MS - 1));
-        assert!(!d.observe(None, REPEAT_WINDOW_MS));
-        assert!(d.observe(Some(&s("a")), REPEAT_WINDOW_MS));
+        assert!(d.observe(Some(&s("a")), 0, 0));
+        assert!(!d.observe(None, 1, 0));
+        assert!(!d.observe(Some(&s("a")), REPEAT_WINDOW_MS - 1, 0));
+        assert!(!d.observe(None, REPEAT_WINDOW_MS, 0));
+        assert!(d.observe(Some(&s("a")), REPEAT_WINDOW_MS, 0));
     }
 
     #[test]
-    fn a_new_service_resets_the_history() {
+    fn a_new_calendar_day_resets_the_history() {
         let mut d = UsageDedupe::default();
-        assert!(d.observe(Some(&s("a")), 0));
-        d.reset();
-        assert!(d.observe(Some(&s("a")), 5));
+        assert!(d.observe(Some(&s("a")), 0, 10));
+        assert!(d.observe(Some(&s("b")), 1, 10));
+        // Midnight passes with a different song live: a is a fresh use on day 11.
+        assert!(d.observe(Some(&s("a")), 2, 11));
+        assert!(d.observe(Some(&s("b")), 3, 11));
+    }
+
+    #[test]
+    fn seeded_history_prevents_relogging_after_a_restart() {
+        let mut d = UsageDedupe::default();
+        d.seed([(s("a"), 100), (s("a"), 50)]);
+        assert!(!d.observe(Some(&s("a")), 100 + REPEAT_WINDOW_MS - 1, 0));
+        assert!(!d.observe(None, 100 + REPEAT_WINDOW_MS, 0));
+        assert!(d.observe(Some(&s("a")), 100 + REPEAT_WINDOW_MS, 0));
+    }
+
+    #[test]
+    fn local_day_changes_across_a_day() {
+        let a = local_day(1_700_000_000_000);
+        assert_eq!(local_day(1_700_000_000_000 + 2 * 86_400_000), a + 2);
     }
 
     #[test]
     fn non_songs_never_count() {
         let mut d = UsageDedupe::default();
-        assert!(!d.observe(None, 0));
+        assert!(!d.observe(None, 0, 0));
     }
 }

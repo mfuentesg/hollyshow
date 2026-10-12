@@ -17,6 +17,8 @@ pub trait SongRepo: Send + Sync {
     fn delete(&self, id: &SongId) -> StorageResult<()>;
     /// Records that a song was projected (CCLI report).
     fn log_usage(&self, id: &SongId, shown_at_ms: i64) -> StorageResult<()>;
+    /// Latest `shown_at` of every song logged at or after `since_ms` (seeds the dedupe on start).
+    fn recent_usage(&self, since_ms: i64) -> StorageResult<Vec<(SongId, i64)>>;
 }
 
 pub trait BibleRepo: Send + Sync {

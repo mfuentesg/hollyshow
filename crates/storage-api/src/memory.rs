@@ -128,6 +128,15 @@ impl SongRepo for MemoryStore {
         self.lock().usage.push((id.clone(), shown_at_ms));
         Ok(())
     }
+
+    fn recent_usage(&self, since_ms: i64) -> StorageResult<Vec<(SongId, i64)>> {
+        let mut latest: std::collections::HashMap<SongId, i64> = std::collections::HashMap::new();
+        for (id, at) in self.lock().usage.iter().filter(|(_, at)| *at >= since_ms) {
+            let e = latest.entry(id.clone()).or_insert(*at);
+            *e = (*e).max(*at);
+        }
+        Ok(latest.into_iter().collect())
+    }
 }
 
 impl BibleRepo for MemoryStore {

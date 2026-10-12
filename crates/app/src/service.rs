@@ -4,7 +4,7 @@ use crate::guard::contain;
 use crate::query;
 use crate::session::RoleFeed;
 use crate::show::build_show;
-use crate::usage::{now_ms, UsageDedupe, UsageLogger};
+use crate::usage::{local_day, now_ms, UsageDedupe, UsageLogger, REPEAT_WINDOW_MS};
 use crate::writer::SessionWriter;
 mod library;
 use hollyshow_bible::{build_bible_slide, VersionText};
@@ -104,12 +104,24 @@ impl AppService {
     pub fn new(repos: Repos, engine: Arc<Engine>, splitter: Arc<dyn SlideSplitter>) -> Self {
         let writer = SessionWriter::spawn(repos.settings.clone(), SESSION_KEY);
         let usage = UsageLogger::spawn(repos.clone());
+        let mut host = HostState::default();
+        let now = now_ms();
+        // Survive restarts: what was logged in the last window still counts as already used,
+        // and only if it happened today (a new service day starts clean).
+        match repos.songs.recent_usage(now - REPEAT_WINDOW_MS) {
+            Ok(rows) => {
+                let today = local_day(now);
+                host.usage_dedupe
+                    .seed(rows.into_iter().filter(|(_, at)| local_day(*at) == today));
+            }
+            Err(e) => log::warn!("usage history: {e}"),
+        }
         Self {
             write_gate: Mutex::new(()),
             engine,
             repos,
             splitter,
-            host: Mutex::new(HostState::default()),
+            host: Mutex::new(host),
             writer,
             usage,
         }
@@ -227,7 +239,10 @@ impl AppService {
         let mut host = self.host();
         let song = item.and_then(|i| host.song_items.get(&i).cloned());
         let now = now_ms();
-        if host.usage_dedupe.observe(song.as_ref(), now) {
+        if host
+            .usage_dedupe
+            .observe(song.as_ref(), now, local_day(now))
+        {
             drop(host);
             if let Some(song) = song {
                 self.usage.submit(song, now);
@@ -304,7 +319,6 @@ impl AppService {
             .ok_or_else(|| CoreError::Invalid(format!("unknown playlist {playlist}")))?;
         if host.active_playlist.as_ref() != Some(playlist) {
             host.live_edits.clear();
-            host.usage_dedupe.reset();
         }
         host.active_playlist = Some(playlist.clone());
         let out = self.load_playlist(&mut host, &pl);
@@ -717,6 +731,78 @@ mod tests {
         assert!(f.app.dispatch(&op(), None, open).ok);
         assert!(f.app.dispatch(&op(), None, live("i1")).ok);
         assert!(f.app.dispatch(&op(), None, live("i2")).ok);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert_eq!(f.store.song_usage().len(), 1);
+    }
+
+    fn wait_usage(store: &MemoryStore, n: usize) {
+        for _ in 0..100 {
+            if store.song_usage().len() >= n {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(80));
+    }
+
+    #[test]
+    fn switching_playlists_back_and_forth_does_not_relog() {
+        let f = fixture();
+        let mut other = playlist();
+        other.id = PlaylistId::new("p2");
+        PlaylistRepo::save(&*f.store, &other).unwrap();
+        let open = |id: &str| Command::SetActivePlaylist {
+            id: PlaylistId::new(id),
+        };
+        let live = || Command::ShowItem {
+            item_id: ItemId::new("i1"),
+            target: Target::Live,
+        };
+        assert!(f.app.dispatch(&op(), None, open("p1")).ok);
+        assert!(f.app.dispatch(&op(), None, live()).ok);
+        assert!(f.app.dispatch(&op(), None, open("p2")).ok);
+        assert!(f.app.dispatch(&op(), None, open("p1")).ok);
+        assert!(f.app.dispatch(&op(), None, live()).ok);
+        wait_usage(&f.store, 1);
+        assert_eq!(f.store.song_usage().len(), 1);
+    }
+
+    #[test]
+    fn a_restart_does_not_relog_a_song_shown_moments_ago() {
+        let f = fixture();
+        SongRepo::log_usage(
+            &*f.store,
+            &hollyshow_core::SongId::new("s1"),
+            now_ms() - 1000,
+        )
+        .unwrap();
+        // A fresh service over the same store, as after a restart.
+        let app = AppService::new(
+            MemoryStore::bundle(f.store.clone()),
+            Arc::new(Engine::default()),
+            Arc::new(DefaultSplitter),
+        );
+        assert!(
+            app.dispatch(
+                &op(),
+                None,
+                Command::SetActivePlaylist {
+                    id: PlaylistId::new("p1")
+                }
+            )
+            .ok
+        );
+        assert!(
+            app.dispatch(
+                &op(),
+                None,
+                Command::ShowItem {
+                    item_id: ItemId::new("i1"),
+                    target: Target::Live
+                }
+            )
+            .ok
+        );
         std::thread::sleep(std::time::Duration::from_millis(300));
         assert_eq!(f.store.song_usage().len(), 1);
     }
