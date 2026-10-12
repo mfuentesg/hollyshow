@@ -7,7 +7,7 @@ import { useToasts } from "../../hooks/useToasts";
 import { cmd } from "../../lib/cmd";
 import { useOperator } from "../OperatorContext";
 
-function monitorLabel(
+export function monitorLabel(
   m: MonitorInfo,
   t: (k: string, o?: Record<string, unknown>) => string,
 ): string {

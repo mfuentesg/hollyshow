@@ -1080,6 +1080,34 @@ button.picklist__row:hover {
 .toast--success {
   border-color: var(--hs-ok);
 }
+.toast__actions {
+  margin-top: 10px;
+}
+.toast__menu {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 4px;
+  border: 1px solid var(--hs-border-strong);
+  border-radius: 8px;
+  background: var(--hs-bg);
+}
+.toast__item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.toast__item:hover:not(:disabled),
+.toast__item:focus-visible {
+  background: var(--hs-elevated);
+}
 .shortcuts {
   width: 100%;
   border-collapse: collapse;

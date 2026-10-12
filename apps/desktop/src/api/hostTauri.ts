@@ -41,6 +41,7 @@ export function createTauriHost(): HostApi {
     closeOutput: (id) =>
       call<void>("closeOutput")({ label: id === "stage" ? "stage" : `output-${id}` }),
     outputMonitors: () => call<Awaited<ReturnType<HostApi["outputMonitors"]>>>("outputMonitors")(),
+    operatorMonitor: () => call<number | null>("operatorMonitor")(),
     getPairing: () => call<Awaited<ReturnType<HostApi["getPairing"]>>>("getPairing")(),
     regeneratePin: () => call<Awaited<ReturnType<HostApi["regeneratePin"]>>>("regeneratePin")(),
     setPairingRole: (role) =>

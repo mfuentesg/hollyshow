@@ -538,6 +538,10 @@
     "crashed": "HollyShow se cerró de forma inesperada la última vez. Se restauró tu sesión.",
     "dbRecovered": "La biblioteca estaba dañada y se restauró desde una copia de seguridad.",
     "outputPaused": "Salida en pausa: monitor no encontrado. Se deja en negro; reasígnala en Salidas o reconecta el monitor.",
+    "reassign": "Reasignar",
+    "reassignMenu": "Elegir pantalla para la salida",
+    "thisScreen": "Esta pantalla",
+    "reassigned": "Salida movida a la pantalla {{n}}.",
     "closeBlocked": "Modo culto activo: desactívalo para cerrar HollyShow.",
     "monitorsChanged": "Cambió la configuración de pantallas. Revisa las salidas: las que perdieron su pantalla quedaron en negro."
   }

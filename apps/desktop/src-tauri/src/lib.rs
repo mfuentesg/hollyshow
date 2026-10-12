@@ -120,6 +120,7 @@ pub fn run() {
             windows::close_window,
             windows::list_monitors,
             windows::output_monitors,
+            windows::operator_monitor_index,
             media::media_search,
             media::media_categories,
             media::media_download,

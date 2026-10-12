@@ -538,6 +538,10 @@
     "crashed": "HollyShow closed unexpectedly last time. Your session was restored.",
     "dbRecovered": "The library was damaged and was restored from a backup.",
     "outputPaused": "Output paused: monitor not found. It is blacked out; reassign it under Outputs or reconnect the monitor.",
+    "reassign": "Reassign",
+    "reassignMenu": "Choose a screen for the output",
+    "thisScreen": "This screen",
+    "reassigned": "Output moved to screen {{n}}.",
     "closeBlocked": "Service mode is on: turn it off to close HollyShow.",
     "monitorsChanged": "The display setup changed. Check your outputs: any that lost their screen were blacked out."
   }

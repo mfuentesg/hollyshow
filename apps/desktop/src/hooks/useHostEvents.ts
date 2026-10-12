@@ -6,6 +6,8 @@ export const HOST_EVENTS = {
   monitors: "hollyshow://monitors",
   closeBlocked: "hollyshow://close-blocked",
   outputPaused: "hollyshow://output-paused",
+  /** An output window was un-parked: its webview must resync (payload: output ids). */
+  outputResync: "hollyshow://output-resync",
   biblesInstalled: "hollyshow://bibles-installed",
 } as const;
 

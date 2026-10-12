@@ -179,6 +179,8 @@ export interface HostApi {
   closeOutput(id: OutputId): Promise<void>;
   /** Monitor index each open output window currently uses. */
   outputMonitors(): Promise<Record<OutputId, number | null>>;
+  /** Monitor index the operator window is on ("this screen"), when it can be told. */
+  operatorMonitor(): Promise<number | null>;
 
   // Remote control.
   getPairing(): Promise<PairingInfo>;
@@ -226,6 +228,7 @@ export const HOST_COMMANDS = {
   openOutput: "open_output",
   closeOutput: "close_window",
   outputMonitors: "output_monitors",
+  operatorMonitor: "operator_monitor_index",
   getPairing: "get_pairing",
   regeneratePin: "regenerate_pin",
   setPairingRole: "set_pairing_role",

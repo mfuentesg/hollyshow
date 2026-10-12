@@ -26,6 +26,10 @@ pub const MONITORS_EVENT: &str = "hollyshow://monitors";
 pub const CLOSE_BLOCKED_EVENT: &str = "hollyshow://close-blocked";
 /// Emitted with the output ids that lost their monitor (payload: `string[]`).
 pub const OUTPUT_PAUSED_EVENT: &str = "hollyshow://output-paused";
+/// Emitted with the output ids whose window was just un-parked (placed on a monitor again), so
+/// the output webviews resync right away instead of waiting for a focus/visibility change
+/// (payload: `string[]`).
+pub const OUTPUT_RESYNC_EVENT: &str = "hollyshow://output-resync";
 
 fn err(code: &str, message: impl ToString) -> WireError {
     WireError {
@@ -436,6 +440,26 @@ fn black_out(app: &AppHandle, label: &str) {
     }
 }
 
+/// Output ids behind the given window labels (each once, in order; non-output labels dropped).
+pub fn output_ids_of_labels(labels: &[String]) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    for id in labels.iter().filter_map(|l| output_of_label(l)) {
+        if !ids.iter().any(|i| i == id) {
+            ids.push(id.to_owned());
+        }
+    }
+    ids
+}
+
+/// Tells the output webviews that these windows were un-parked so they resync their state.
+/// Nothing is emitted when no output is concerned.
+pub fn emit_output_resync<R: tauri::Runtime>(app: &AppHandle<R>, labels: &[String]) {
+    let ids = output_ids_of_labels(labels);
+    if !ids.is_empty() {
+        let _ = app.emit(OUTPUT_RESYNC_EVENT, &ids);
+    }
+}
+
 /// Applies the hot-plug plan for the current monitors.
 pub fn reconcile(app: &AppHandle) -> Result<(), WireError> {
     let state = app.state::<AppState>();
@@ -451,6 +475,7 @@ pub fn reconcile(app: &AppHandle) -> Result<(), WireError> {
         operator_monitor(app, &infos),
     );
     let mut paused = Vec::new();
+    let mut unparked = Vec::new();
     for action in plan {
         match action {
             HotplugAction::Park { label } => {
@@ -472,6 +497,7 @@ pub fn reconcile(app: &AppHandle) -> Result<(), WireError> {
                         Ok(()) => {
                             state.windows.set_parked(&label, false);
                             log::info!("window {label} placed on monitor {monitor}");
+                            unparked.push(label.clone());
                         }
                         Err(e) => log::warn!("could not place {label}: {}", e.message),
                     }
@@ -482,6 +508,7 @@ pub fn reconcile(app: &AppHandle) -> Result<(), WireError> {
     if !paused.is_empty() {
         let _ = app.emit(OUTPUT_PAUSED_EVENT, &paused);
     }
+    emit_output_resync(app, &unparked);
     let _ = app.emit(MONITORS_EVENT, &infos);
     Ok(())
 }
@@ -548,8 +575,12 @@ fn open_command(
         &infos,
         operator_monitor(app, &infos),
     );
+    let was_parked = state.windows.parked().contains(label);
     open_window(app, label, chosen.and_then(|i| mons.get(i)).map(|(_, m)| m))?;
     state.windows.set_parked(label, false);
+    if was_parked {
+        emit_output_resync(app, &[label.to_owned()]);
+    }
     state.windows.remember(
         state.app.repos().settings.as_ref(),
         label,
@@ -606,6 +637,13 @@ pub fn close_window(
 #[tauri::command(async)]
 pub fn list_monitors(app: AppHandle) -> Result<Vec<MonitorInfo>, WireError> {
     Ok(monitors_of(&app)?.into_iter().map(|(i, _)| i).collect())
+}
+
+/// Monitor index the operator window is on (the "Esta pantalla" choice), if it can be told.
+#[tauri::command(async)]
+pub fn operator_monitor_index(app: AppHandle) -> Result<Option<usize>, WireError> {
+    let infos: Vec<MonitorInfo> = monitors_of(&app)?.into_iter().map(|(i, _)| i).collect();
+    Ok(operator_monitor(&app, &infos))
 }
 
 /// Monitor index each open output window uses (`null` when it is windowed or parked).
@@ -682,6 +720,48 @@ mod tests {
             scale_factor: 1.0,
             is_primary: i == 0,
         }
+    }
+
+    #[test]
+    fn resync_ids_come_from_output_labels_once() {
+        let labels: Vec<String> = ["output-main", "stage", "output-main", "main", "output-aux1"]
+            .map(String::from)
+            .into();
+        assert_eq!(
+            output_ids_of_labels(&labels),
+            vec!["main".to_string(), "stage".into(), "aux1".into()]
+        );
+        assert!(output_ids_of_labels(&["main".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn unparking_emits_the_resync_event_with_output_ids() {
+        use std::sync::{Arc, Mutex};
+        use tauri::Listener;
+        let app = tauri::test::mock_app();
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink = seen.clone();
+        app.listen(OUTPUT_RESYNC_EVENT, move |e| {
+            sink.lock().unwrap().push(e.payload().to_owned());
+        });
+        // Nothing to resync: no event.
+        emit_output_resync(app.handle(), &[]);
+        emit_output_resync(app.handle(), &["main".to_string()]);
+        emit_output_resync(
+            app.handle(),
+            &["output-main".to_string(), "output-aux1".to_string()],
+        );
+        // Delivery is synchronous on the mock runtime, but give the dispatcher a moment.
+        for _ in 0..50 {
+            if !seen.lock().unwrap().is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![r#"["main","aux1"]"#.to_string()]
+        );
     }
 
     #[test]

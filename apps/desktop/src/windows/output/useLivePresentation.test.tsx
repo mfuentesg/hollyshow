@@ -3,6 +3,14 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RECONCILE_MS, useLivePresentation } from "./useLivePresentation";
 
+const listeners = vi.hoisted(() => new Map<string, (e: { payload: unknown }) => void>());
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: async (name: string, cb: (e: { payload: unknown }) => void) => {
+    listeners.set(name, cb);
+    return () => listeners.delete(name);
+  },
+}));
+
 type Snap = { version: number; showRevision: number; show: unknown[] } & Record<string, unknown>;
 
 function fakeApi(initial: Snap) {
@@ -97,5 +105,33 @@ describe("useLivePresentation ordering", () => {
       await vi.advanceTimersByTimeAsync(RECONCILE_MS + 10);
     });
     expect(result.current?.view.version).toBe(9);
+  });
+});
+
+describe("useLivePresentation resync event", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    listeners.clear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  it("resyncs immediately when the shell un-parks the window", async () => {
+    const f = fakeApi(snap(1));
+    const { result, unmount } = renderHook(() => useLivePresentation(f.api));
+    await act(async () => {});
+    expect(listeners.has("hollyshow://output-resync")).toBe(true);
+    f.setSnap(snap(4, 2)); // changed while the window was parked; no event reached it
+    const queries = f.raw.query.mock.calls.length;
+    await act(async () => {
+      listeners.get("hollyshow://output-resync")!({ payload: ["main"] });
+    });
+    expect(result.current?.view.version).toBe(4);
+    expect(f.raw.query.mock.calls.length).toBe(queries + 1); // themes reloaded too
+    unmount();
+    expect(listeners.has("hollyshow://output-resync")).toBe(false);
   });
 });

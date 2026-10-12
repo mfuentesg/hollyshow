@@ -6,6 +6,7 @@ import { useHostEvents } from "../hooks/useHostEvents";
 import { ToastProvider, useToasts } from "../hooks/useToasts";
 import { CommandPalette } from "./CommandPalette";
 import { Footer } from "./Footer";
+import { ReassignOutput } from "./ReassignOutput";
 import { OperatorProvider, useOperator } from "./OperatorContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { TemplateDialog } from "./TemplateDialog";
@@ -63,7 +64,20 @@ function useHostNotices() {
   useHostEvents({
     closeBlocked: () => toasts.push(t("startup.closeBlocked"), "info"),
     monitors: () => toasts.push(t("startup.monitorsChanged"), "info"),
-    outputPaused: () => toasts.push(t("startup.outputPaused"), "error"),
+    outputPaused: (ids) =>
+      toasts.action(
+        t("startup.outputPaused"),
+        (dismiss) => (
+          <ReassignOutput
+            outputs={
+              Array.isArray(ids) ? ids.filter((i): i is string => typeof i === "string") : []
+            }
+            onDone={dismiss}
+          />
+        ),
+        "error",
+        30000,
+      ),
   });
 }
 

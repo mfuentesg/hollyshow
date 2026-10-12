@@ -46,6 +46,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 rfd = "0.15"
 
 [dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 rusqlite.workspace = true
 hollyshow-storage-api = { workspace = true, features = ["testing"] }
 tempfile = "3"

@@ -690,6 +690,9 @@ export function createDemoBackend(seed: DemoSeed = {}): DemoBackend {
     async outputMonitors() {
       return { ...outputMon };
     },
+    async operatorMonitor() {
+      return monitors.find((m) => m.isPrimary)?.index ?? null;
+    },
     async getPairing() {
       return pairing;
     },

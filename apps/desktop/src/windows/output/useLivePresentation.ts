@@ -1,5 +1,6 @@
 import type { HollyApi, ShowEntry, StateView, Theme } from "@hollyshow/protocol";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useHostEvents } from "../../hooks/useHostEvents";
 
 export interface LivePresentation {
   view: StateView;
@@ -20,10 +21,13 @@ export const RECONCILE_MS = 10_000;
  *   dropped (IPC results and events carry no ordering guarantee), and a slow snapshot never
  *   overwrites a newer update that landed while it was in flight;
  * - reconciles every RECONCILE_MS and on focus / visibility (a parked window being shown again);
+ * - resyncs immediately on the shell's `output-resync` event (the window was un-parked);
  * - loads the themes and reloads them when the library says themes/media changed.
  */
 export function useLivePresentation(api: HollyApi): LivePresentation | null {
   const [state, setState] = useState<LivePresentation | null>(null);
+  const resyncRef = useRef<(() => void) | null>(null);
+  useHostEvents({ outputResync: () => resyncRef.current?.() });
 
   useEffect(() => {
     let alive = true;
@@ -101,6 +105,12 @@ export function useLivePresentation(api: HollyApi): LivePresentation | null {
     const onVisible = () => {
       if (document.visibilityState !== "hidden") void reconcile();
     };
+    // The Rust shell un-parked this window (its monitor is back): resync at once, whether or not
+    // the webview gets a visibility/focus event.
+    resyncRef.current = () => {
+      void sync();
+      void loadThemes();
+    };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
 
@@ -124,6 +134,7 @@ export function useLivePresentation(api: HollyApi): LivePresentation | null {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
+      resyncRef.current = null;
       off();
     };
   }, [api]);
