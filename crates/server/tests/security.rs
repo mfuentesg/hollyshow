@@ -277,6 +277,72 @@ async fn https_serves_the_app_with_the_generated_certificate() {
     h.running.shutdown().await;
 }
 
+/// The real remote flow over TLS: pair through HTTPS, then open `wss://` and complete the
+/// hello/welcome handshake with the issued token, trusting only the generated certificate.
+#[tokio::test]
+async fn wss_hello_and_welcome_work_over_tls() {
+    use futures_util::{SinkExt, StreamExt};
+    use rustls::pki_types::pem::PemObject;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let dir = tempfile::tempdir().unwrap();
+    let h = start_with(tls_config(dir.path())).await;
+    let port = h.addr.port();
+
+    let offer = h.server.pairing_offer(Role::Stage).unwrap();
+    let c = trusting_client(dir.path());
+    let (status, body) = pair(
+        &c,
+        &format!("https://localhost:{port}"),
+        json!({"pin": offer.pin, "deviceName": "Wss"}),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let token = body["token"].as_str().expect("pairing issues a token");
+
+    // Trust exactly the generated certificate.
+    let pem = std::fs::read(dir.path().join("cert.pem")).unwrap();
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in rustls::pki_types::CertificateDer::pem_slice_iter(&pem) {
+        roots.add(cert.unwrap()).unwrap();
+    }
+    let client_config = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::aws_lc_rs::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    let connector = tokio_rustls::TlsConnector::from(Arc::new(client_config));
+
+    let tcp = tokio::net::TcpStream::connect(h.addr).await.unwrap();
+    let name = rustls::pki_types::ServerName::try_from("localhost").unwrap();
+    let tls = connector.connect(name, tcp).await.expect("TLS handshake");
+    let (mut ws, _) = tokio_tungstenite::client_async(format!("wss://localhost:{port}/ws"), tls)
+        .await
+        .expect("wss upgrade");
+
+    let hello = json!({"type":"hello","protocolMin":1,"protocolMax":1,"role":"stage",
+        "deviceName":"Wss","token":token,"pin":null,"capabilities":[]});
+    ws.send(Message::text(hello.to_string())).await.unwrap();
+    let welcome = loop {
+        let m = tokio::time::timeout(Duration::from_secs(5), ws.next())
+            .await
+            .expect("timed out waiting for welcome")
+            .expect("socket closed before welcome")
+            .unwrap();
+        if let Message::Text(t) = m {
+            let v: Value = serde_json::from_str(t.as_str()).unwrap();
+            if v["type"] == "welcome" {
+                break v;
+            }
+        }
+    };
+    assert_eq!(welcome["protocol"], 1);
+    drop(ws);
+    h.running.shutdown().await;
+}
+
 #[tokio::test]
 async fn plain_http_is_redirected_to_https_on_the_same_port() {
     let dir = tempfile::tempdir().unwrap();
