@@ -123,7 +123,8 @@ CREATE TABLE bible_verses (
     UNIQUE (version, book, chapter, verse)
 );
 
--- rowid = bible_verses.id; `version` is only filtered, never searched.
+-- rowid = bible_verses.id. `version` is a legacy unused column (always empty for new rows):
+-- search filters through bible_verses so a version rename never rewrites the index.
 CREATE VIRTUAL TABLE bible_fts USING fts5(
     text,
     version UNINDEXED,

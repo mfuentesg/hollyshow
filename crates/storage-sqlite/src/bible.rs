@@ -118,31 +118,34 @@ fn install_header(conn: &Connection, version: &BibleVersion, stage: &str) -> Sto
     Ok(())
 }
 
-/// Step 3, one short transaction: drops the previous copy of the code, renames the staged rows
-/// to the real code, applies enabled/default/secondary exclusivity and enables the version.
+/// Code under which the previous copy of a reinstalled Bible waits to be deleted. It carries the
+/// staging prefix, so it is hidden from listings and search and swept at start-up.
+fn retired_code(code: &VersionCode) -> String {
+    format!("{STAGING_PREFIX}old~{}", code.0)
+}
+
+/// Step 3, one short transaction: moves the previous copy of the code aside, renames the staged
+/// rows to the real code, applies enabled/default/secondary exclusivity and enables the version.
+///
+/// Only the plain `bibles`/`bible_verses` rows are renamed. The FTS index is keyed by verse id
+/// and carries no version (search filters through `bible_verses`), so the swap never re-indexes
+/// text, and deleting the old copy (the expensive part) happens afterwards in
+/// [`discard_retired`], outside this transaction.
 fn finish_install(conn: &Connection, version: &BibleVersion, stage: &str) -> StorageResult<()> {
     let code = &version.code.0;
-    remove_code(conn, code)?;
-    // The rename touches the parent and child rows in turn; check the constraint at commit.
+    let retired = retired_code(&version.code);
+    // The renames touch the parent and child rows in turn; check the constraint at commit.
     conn.pragma_update(None, "defer_foreign_keys", true)
         .map_err(map_err)?;
-    conn.execute("UPDATE bibles SET code = ?2 WHERE code = ?1", [stage, code])
-        .map_err(map_err)?;
-    conn.execute(
-        "UPDATE bible_verses SET version = ?2 WHERE version = ?1",
-        [stage, code],
-    )
-    .map_err(map_err)?;
-    conn.execute(
-        "UPDATE bible_fts SET version = ?2 WHERE rowid IN
-            (SELECT id FROM bible_verses WHERE version = ?2)",
-        [stage, code],
-    )
-    .map_err(map_err)?;
+    // A leftover retired copy (crash between swap and discard in this process) goes first.
+    remove_code(conn, &retired)?;
+    rename_code(conn, code, &retired)?;
+    rename_code(conn, stage, code)?;
     let has_default: bool = conn
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM bibles WHERE is_default = 1 AND code <> ?1)",
-            [code],
+            "SELECT EXISTS(SELECT 1 FROM bibles WHERE is_default = 1 AND code <> ?1
+                                              AND code NOT LIKE ?2)",
+            params![code, format!("{STAGING_PREFIX}%")],
             |r| r.get(0),
         )
         .map_err(map_err)?;
@@ -169,6 +172,23 @@ fn finish_install(conn: &Connection, version: &BibleVersion, stage: &str) -> Sto
     Ok(())
 }
 
+/// Renames a Bible's rows (no-op when `from` does not exist). Needs deferred foreign keys.
+fn rename_code(conn: &Connection, from: &str, to: &str) -> StorageResult<()> {
+    conn.execute("UPDATE bibles SET code = ?2 WHERE code = ?1", [from, to])
+        .map_err(map_err)?;
+    conn.execute(
+        "UPDATE bible_verses SET version = ?2 WHERE version = ?1",
+        [from, to],
+    )
+    .map_err(map_err)?;
+    Ok(())
+}
+
+/// Step 4: deletes the previous copy retired by [`finish_install`] (its own transaction).
+fn discard_retired(conn: &Connection, code: &VersionCode) -> StorageResult<()> {
+    remove_code(conn, &retired_code(code))
+}
+
 /// Step 2 (repeatable): inserts a batch of verses under the staging code.
 fn install_verses(conn: &Connection, stage: &str, verses: &[Verse]) -> StorageResult<()> {
     let mut ins = conn
@@ -181,7 +201,7 @@ fn install_verses(conn: &Connection, stage: &str, verses: &[Verse]) -> StorageRe
         )
         .map_err(map_err)?;
     let mut fts = conn
-        .prepare_cached("INSERT INTO bible_fts (rowid, text, version) VALUES (?1, ?2, ?3)")
+        .prepare_cached("INSERT INTO bible_fts (rowid, text, version) VALUES (?1, ?2, '')")
         .map_err(map_err)?;
     let mut del_fts = conn
         .prepare_cached("DELETE FROM bible_fts WHERE rowid = ?1")
@@ -202,8 +222,7 @@ fn install_verses(conn: &Connection, stage: &str, verses: &[Verse]) -> StorageRe
             .map_err(map_err)?;
         // A duplicated reference in the input replaced the text above; keep one FTS row.
         del_fts.execute([id]).map_err(map_err)?;
-        fts.execute(params![id, fold(&v.text), stage])
-            .map_err(map_err)?;
+        fts.execute(params![id, fold(&v.text)]).map_err(map_err)?;
     }
     Ok(())
 }
@@ -328,6 +347,8 @@ impl Store {
                 return Ok(false);
             }
             step(&|c| finish_install(c, version, &stage))?;
+            // The new copy is live; a failure here only leaves a hidden copy for start-up.
+            let _ = step(&|c| discard_retired(c, &version.code));
             Ok(true)
         };
         match run() {
@@ -516,8 +537,8 @@ impl BibleRepo for Store {
             .prepare_cached(
                 "SELECT v.version, v.book, v.chapter, v.verse, v.text
                  FROM bible_fts f JOIN bible_verses v ON v.id = f.rowid
-                 WHERE bible_fts MATCH ?1 AND (?2 IS NULL OR f.version = ?2)
-                   AND f.version NOT LIKE ?4
+                 WHERE bible_fts MATCH ?1 AND (?2 IS NULL OR v.version = ?2)
+                   AND v.version NOT LIKE ?4
                  ORDER BY f.rank, v.id
                  LIMIT ?3",
             )
@@ -542,5 +563,85 @@ impl BibleRepo for Store {
             .collect::<Result<_, _>>()
             .map_err(map_err)?;
         Ok(rows)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn bible(code: &str) -> BibleVersion {
+        BibleVersion {
+            code: VersionCode(code.into()),
+            name: code.into(),
+            language: "es".into(),
+            license: "PD".into(),
+            copyright_text: String::new(),
+            is_public_domain: true,
+            versification: "kjv".into(),
+            sort_order: 0,
+            is_enabled: true,
+            is_default: false,
+            is_secondary: false,
+        }
+    }
+
+    fn full_bible(tag: &str) -> Vec<Verse> {
+        (0..31_000u32)
+            .map(|i| Verse {
+                reference: BibleRef::verse("Gen", (i / 100 + 1) as u16, (i % 100 + 1) as u16),
+                text: format!("{tag} en el principio creo Dios los cielos y la tierra {i}"),
+                marks: vec![],
+            })
+            .collect()
+    }
+
+    /// The swap holds the writer lock, so it must not scale with the 31k-verse Bible: the FTS
+    /// index is never rewritten, and the old copy is deleted outside it.
+    #[test]
+    fn swap_of_a_full_size_bible_is_short() {
+        let s = Store::open_in_memory().unwrap();
+        let v = bible("RVR");
+        s.install_bible(&v, &full_bible("viejo")).unwrap();
+
+        let stage = staging_code(&v.code);
+        let verses = full_bible("nuevo");
+        s.lock()
+            .transaction()
+            .and_then(|tx| {
+                install_header(&tx, &v, &stage).unwrap();
+                tx.commit()
+            })
+            .unwrap();
+        for chunk in verses.chunks(INSTALL_BATCH) {
+            let mut conn = s.lock();
+            let tx = conn.transaction().unwrap();
+            install_verses(&tx, &stage, chunk).unwrap();
+            tx.commit().unwrap();
+        }
+        let t = Instant::now();
+        {
+            let mut conn = s.lock();
+            let tx = conn.transaction().unwrap();
+            finish_install(&tx, &v, &stage).unwrap();
+            tx.commit().unwrap();
+        }
+        let swap = t.elapsed();
+        // Re-indexing 31k rows took seconds; a rename of plain rows is a few hundred ms at worst.
+        // The bound is deliberately loose so slow CI machines do not flake.
+        assert!(swap < Duration::from_secs(2), "swap took {swap:?}");
+
+        // Before the old copy is discarded it is hidden from search and listings.
+        let code = &v.code;
+        assert_eq!(s.verse_count(code).unwrap(), 31_000);
+        assert!(s.search("viejo", None, 5).unwrap().is_empty());
+        assert_eq!(s.search("nuevo", Some(code), 5).unwrap().len(), 5);
+        let c = s.lock();
+        discard_retired(&c, code).unwrap();
+        let left: i64 = c
+            .query_row("SELECT count(*) FROM bible_verses", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 31_000);
     }
 }
