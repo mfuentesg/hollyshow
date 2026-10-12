@@ -9,7 +9,8 @@ con control remoto desde el móvil por la red local. Hecha con Tauri 2, React y 
 - Varias versiones de la Biblia de dominio público, búsqueda por referencia o por texto.
 - Orden del culto con plantillas, modo culto (bloquea cierres accidentales), temporizadores y edición en vivo.
 - Varias salidas (proyector, escenario) y temas configurables; paleta de comandos con Ctrl/Cmd+K.
-- Control remoto web para móvil con emparejamiento por código; desactivado por defecto.
+- Control remoto web para móvil con emparejamiento por PIN/QR de un solo uso (caduca en minutos) y HTTPS opcional con certificado autofirmado; desactivado por defecto.
+- Informe de uso de canciones para CCLI (Ajustes > Biblioteca e informes), exportable a CSV.
 - Copias de seguridad automáticas, exportación e importación de la biblioteca, interfaz en español (inglés secundario).
 
 Fuera de alcance por ahora: subtítulos con IA, NDI, MIDI/OSC, iluminación, Planning Center, sincronización en la nube.

@@ -68,5 +68,7 @@ Sin firma, macOS muestra «desarrollador no identificado» y Windows SmartScreen
 ## Puntos de verificación antes de etiquetar
 
 - `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `pnpm lint && pnpm typecheck && pnpm test`.
+- `node scripts/check-version.mjs`, `pnpm gen:types` sin diff, `pnpm -r test`, `pnpm --filter remote build` y `pnpm --filter desktop tauri build` (Linux: `.deb` y `.AppImage` en `target/release/bundle`).
+- Remoto: emparejar con PIN/QR (un solo uso, caduca), probar con HTTPS activado (aviso del certificado autofirmado) y que el informe CCLI genere datos.
 - Lista de verificación manual en macOS (no hay `tauri-driver`): arranque, proyector, QR, remoto.
 - Compatibilidad: macOS 12+, Windows 10/11 x64, Linux con WebKitGTK 4.1.

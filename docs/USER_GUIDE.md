@@ -41,13 +41,18 @@ Por defecto el remoto usa HTTP sin cifrar, adecuado solo para una red Wi-Fi de c
 - **Por qué conviene:** los navegadores solo permiten ciertas funciones en «contextos seguros» (HTTPS). Con HTTPS el celular puede **mantener la pantalla encendida** mientras sigues el culto (Wake Lock) e **instalar el remoto como aplicación (PWA)** en la pantalla de inicio. Con HTTP esas funciones no están disponibles. Además, el PIN, el token de sesión y el contenido ya no viajan en claro por el Wi-Fi.
 - Si el aviso se repite cada vez, borra el sitio guardado del navegador o vuelve a aceptar el certificado tras comprobar la huella.
 
-## 5. Avisos del firewall
+## 5. Informe de uso (CCLI) y enlaces externos
+
+- **Informe CCLI:** en Ajustes > Biblioteca e informes elige el rango de fechas y pulsa «Generar informe». Cada canción se cuenta una vez por sesión de presentación (no al cambiar de diapositiva ni al volver a ella en 30 minutos). Puedes copiar o descargar el CSV con título, autor, número CCLI, veces y última vez. El registro de uso sobrevive a los reinicios de la app.
+- **Enlaces externos** (notas de versión, créditos de imágenes, licencias): se abren en el navegador del sistema, nunca dentro de la app, y solo si son `https://`.
+
+## 6. Avisos del firewall
 
 - **Windows:** al primer inicio aparece «Windows Defender Firewall ha bloqueado algunas características». Marca **Redes privadas** y pulsa «Permitir acceso». Si la red de la iglesia está como «Pública», cámbiala a «Privada» o crea la regla en Seguridad de Windows > Firewall.
 - **macOS:** aparece «¿Quieres que la aplicación HollyShow acepte conexiones de red entrantes?». Pulsa **Permitir**. Si lo negaste, ve a Ajustes del Sistema > Red > Firewall > Opciones y permite HollyShow.
 - **Linux:** si usas `ufw`, permite el puerto que muestra Remoto > Diagnóstico (`sudo ufw allow <puerto>/tcp`).
 
-## 6. Solución de problemas
+## 7. Solución de problemas
 
 **El celular no abre la página o se desconecta**
 

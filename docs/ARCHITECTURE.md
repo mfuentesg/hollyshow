@@ -155,7 +155,7 @@ El estado Rust es la fuente de verdad **del show expandido**, pero la fuente del
   latidos ni acks de los móviles. Un único `Arc<AppService>` compartido. Las `async fn` del shell no llaman a los
   repositorios ni a `library_changed` en línea: usan `state::blocking`, que va a `spawn_blocking` con un semáforo (4 a la vez).
 - **ACL de Tauri**: `build.rs` declara todos los comandos (`AppManifest`), de modo que cada uno tiene un permiso `allow-<nombre>`.
-  `capabilities/default.json` (ventana `main`) los concede todos; `capabilities/render-only.json` (`output-*`, `stage`) solo
+  `capabilities/default.json` (ventana `main`) los concede todos; `capabilities/opener.json` (solo `main`) permite `opener:allow-open-url` únicamente para `https://**` (`src/lib/external.ts` aplica el mismo filtro); `capabilities/render-only.json` (`output-*`, `stage`) solo
   `get_snapshot`, `query` y `report_output_stats`. Un test comprueba que el manifiesto coincide con `generate_handler!`.
 - Registro de uso (informe CCLI): al pasar cualquier canción a vivo (servicio, paleta, remoto), `AppService` la resuelve en memoria
   y `UsageDedupe` (`usage.rs`) decide si cuenta: no al cambiar de diapositiva, una vez por canción en 30 min, se reinicia al abrir otro
